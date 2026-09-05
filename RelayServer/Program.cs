@@ -12,18 +12,29 @@ Log.Logger = new LoggerConfiguration()
         retainedFileCountLimit: 14)
     .CreateLogger();
 
-// ---- Configuration ----
-var adminToken = Environment.GetEnvironmentVariable("RAT_ADMIN_TOKEN") ?? "admin-secret-change-me";
-var hostToken = Environment.GetEnvironmentVariable("RAT_HOST_TOKEN") ?? "host-secret-change-me";
-var listenPort = int.TryParse(Environment.GetEnvironmentVariable("RAT_PORT"), out var p) ? p : 5050;
-var useTls = Environment.GetEnvironmentVariable("RAT_TLS") != "false"; // TLS on by default
-var pfxPath = Environment.GetEnvironmentVariable("RAT_CERT_PATH") ?? "";
-var pfxPassword = Environment.GetEnvironmentVariable("RAT_CERT_PASSWORD") ?? "dev-password";
-
-var hub = new ConnectionHub(adminToken, hostToken);
-
+// ---- Configuration (appsettings.json → env vars → defaults) ----
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
+
+// Config is loaded automatically from appsettings.json by WebApplication.CreateBuilder
+var config = builder.Configuration;
+
+var adminToken = config["Auth:AdminToken"]
+    ?? Environment.GetEnvironmentVariable("RAT_ADMIN_TOKEN")
+    ?? "admin-secret-change-me";
+var hostToken = config["Auth:HostToken"]
+    ?? Environment.GetEnvironmentVariable("RAT_HOST_TOKEN")
+    ?? "host-secret-change-me";
+var listenPort = int.TryParse(config["RelayServer:Port"] ?? Environment.GetEnvironmentVariable("RAT_PORT"), out var p)
+    ? p : 5050;
+var useTlsStr = config["RelayServer:TLS"] ?? Environment.GetEnvironmentVariable("RAT_TLS");
+var useTls = useTlsStr != "false" && useTlsStr != "False";
+var pfxPath = config["RelayServer:CertPath"]
+    ?? Environment.GetEnvironmentVariable("RAT_CERT_PATH") ?? "";
+var pfxPassword = config["RelayServer:CertPassword"]
+    ?? Environment.GetEnvironmentVariable("RAT_CERT_PASSWORD") ?? "dev-password";
+
+var hub = new ConnectionHub(adminToken, hostToken);
 
 // Configure Kestrel with TLS
 builder.WebHost.ConfigureKestrel(options =>

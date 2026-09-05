@@ -121,3 +121,9 @@ $RECYCLE.BIN/
 *.env
 appsettings.Development.json
 appsettings.Local.json
+Host/appsettings.json
+RelayServer/appsettings.json
+
+## TLS dev certs
+dev-cert.pfx
+*.pfx
