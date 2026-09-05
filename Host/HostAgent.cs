@@ -18,7 +18,8 @@ public sealed class HostAgent
     private readonly string _machineId;
     private readonly string _machineName;
     private readonly string _authToken;
-    private readonly ScreenCapture _capture = new();
+    private readonly bool _unattendedMode;
+    private readonly IScreenCapture _capture = ScreenCaptureFactory.Create();
     private readonly InputInjector _input = new();
 
     private ClientWebSocket? _ws;
@@ -27,12 +28,13 @@ public sealed class HostAgent
     public event EventHandler<bool>? SessionStateChanged;
     public event EventHandler<string>? ConnectionStateChanged;
 
-    public HostAgent(string relayUrl, string machineId, string machineName, string authToken)
+    public HostAgent(string relayUrl, string machineId, string machineName, string authToken, bool unattendedMode = false)
     {
         _relayUrl = relayUrl;
         _machineId = machineId;
         _machineName = machineName;
         _authToken = authToken;
+        _unattendedMode = unattendedMode;
     }
 
     /// <summary>
@@ -120,6 +122,14 @@ public sealed class HostAgent
             switch (type)
             {
                 case MessageType.SessionStarted:
+                    // Ask the local user for consent (unless unattended mode)
+                    if (!ConsentDialog.RequestConsent(_unattendedMode))
+                    {
+                        Console.WriteLine("[HostAgent] Session DENIED by local user");
+                        await MessageFraming.WriteFrameAsync(_stream!, MessageType.Disconnect,
+                            Array.Empty<byte>(), ct);
+                        break;
+                    }
                     Console.WriteLine("[HostAgent] Session started — admin connected");
                     SessionStateChanged?.Invoke(this, true);
                     await RunSessionAsync(ct);
@@ -146,9 +156,19 @@ public sealed class HostAgent
     private async Task RunSessionAsync(CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var clipboard = new ClipboardSyncService();
+
+        // Start clipboard sync
+        if (_stream is not null)
+        {
+            clipboard.Start(_stream, cts.Token);
+        }
+
+        // Send monitor list to admin so they can pick which screen to view
+        await SendMonitorListAsync(cts.Token);
 
         var sendTask = FrameSendLoopAsync(cts.Token);
-        var receiveTask = InputReceiveLoopAsync(cts.Token);
+        var receiveTask = InputReceiveLoopAsync(clipboard, cts.Token);
 
         var finished = await Task.WhenAny(sendTask, receiveTask);
         cts.Cancel();
@@ -157,22 +177,69 @@ public sealed class HostAgent
         catch { /* expected once cancelled */ }
     }
 
+    private async Task SendMonitorListAsync(CancellationToken ct)
+    {
+        if (_stream is null) return;
+
+        var monitors = _capture.GetMonitors();
+        var monitorData = monitors.Select(m => new MonitorInfoData(
+            m.Index, m.Name, m.Width, m.Height, m.IsPrimary)).ToArray();
+
+        var msg = new MonitorListMessage(monitorData);
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.MonitorList,
+            JsonSerializer.SerializeToUtf8Bytes(msg), ct);
+    }
+
     private async Task FrameSendLoopAsync(CancellationToken ct)
     {
-        // NOTE: this is a naive fixed-interval JPEG-per-frame sender to start with.
-        // Swap in a proper delta/keyframe codec once the basic pipeline works end to end.
         const int targetFps = 15;
         var frameInterval = TimeSpan.FromMilliseconds(1000.0 / targetFps);
+        var heartbeatInterval = TimeSpan.FromSeconds(5);
+        var lastHeartbeat = DateTime.UtcNow;
+
+        // Adaptive quality: start at 60, reduce if frames take too long to send
+        long jpegQuality = 60;
+        const long minQuality = 20;
+        const long maxQuality = 80;
 
         while (!ct.IsCancellationRequested && _stream is not null)
         {
-            var frameBytes = _capture.CaptureFrameAsJpeg(quality: 60);
-            await MessageFraming.WriteFrameAsync(_stream, MessageType.FrameData, frameBytes, ct);
+            var sendStart = DateTime.UtcNow;
+
+            var frameBytes = _capture.CaptureFrameAsJpeg(quality: jpegQuality);
+
+            // DXGI returns empty when screen hasn't changed — skip sending
+            if (frameBytes.Length > 0)
+            {
+                await MessageFraming.WriteFrameAsync(_stream, MessageType.FrameData, frameBytes, ct);
+            }
+
+            var sendTime = DateTime.UtcNow - sendStart;
+
+            // Adaptive quality: if sending takes more than half the frame interval,
+            // reduce quality to save bandwidth. If fast, increase quality.
+            if (sendTime > frameInterval * 0.5 && jpegQuality > minQuality)
+            {
+                jpegQuality = Math.Max(minQuality, jpegQuality - 5);
+            }
+            else if (sendTime < frameInterval * 0.2 && jpegQuality < maxQuality)
+            {
+                jpegQuality = Math.Min(maxQuality, jpegQuality + 2);
+            }
+
+            // Send heartbeat every 5 seconds alongside frames
+            if (DateTime.UtcNow - lastHeartbeat > heartbeatInterval)
+            {
+                await MessageFraming.WriteFrameAsync(_stream, MessageType.Heartbeat,
+                    Array.Empty<byte>(), ct);
+                lastHeartbeat = DateTime.UtcNow;
+            }
+
             await Task.Delay(frameInterval, ct);
         }
     }
 
-    private async Task InputReceiveLoopAsync(CancellationToken ct)
+    private async Task InputReceiveLoopAsync(ClipboardSyncService clipboard, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested && _stream is not null)
         {
@@ -200,6 +267,22 @@ public sealed class HostAgent
                     _input.SendKey(key.VirtualKeyCode, key.Action);
                     break;
 
+                case MessageType.ClipboardSync:
+                    clipboard.HandleIncomingClipboard(payload);
+                    break;
+
+                case MessageType.MonitorSelect:
+                    var monSelect = JsonSerializer.Deserialize<MonitorSelectMessage>(payload);
+                    _capture.SelectMonitor(monSelect.MonitorIndex);
+                    Console.WriteLine($"[HostAgent] Monitor switched to index {monSelect.MonitorIndex}");
+                    break;
+
+                case MessageType.ChatMessage:
+                    var chat = JsonSerializer.Deserialize<ChatMessageData>(payload);
+                    Console.WriteLine($"[Chat] {chat.SenderName}: {chat.Text}");
+                    // Could show a notification balloon on the tray icon here
+                    break;
+
                 case MessageType.Heartbeat:
                     break;
 
@@ -210,3 +293,4 @@ public sealed class HostAgent
         }
     }
 }
+

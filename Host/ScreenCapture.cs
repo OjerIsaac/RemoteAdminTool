@@ -4,22 +4,49 @@ using System.Drawing.Imaging;
 namespace RemoteAdminTool.Host;
 
 /// <summary>
-/// Basic GDI-based screen capture. Simple and reliable, but not the fastest option.
-/// For higher frame rates later, this can be replaced with the DXGI Desktop Duplication
-/// API (via SharpDX or Vortice.Windows) without changing the rest of the pipeline --
-/// it just needs to keep producing JPEG/PNG byte arrays.
+/// GDI-based screen capture — simple, reliable fallback that works everywhere.
+/// For higher frame rates, use DxgiScreenCapture when available.
+/// Now supports multi-monitor selection.
 /// </summary>
-public sealed class ScreenCapture
+public sealed class ScreenCapture : IScreenCapture
 {
+    private int _selectedMonitor = -1; // -1 = primary
+
     public (int Width, int Height) GetScreenSize()
     {
-        var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
-        return (bounds.Width, bounds.Height);
+        var screen = GetSelectedScreen();
+        return (screen.Bounds.Width, screen.Bounds.Height);
+    }
+
+    public MonitorInfo[] GetMonitors()
+    {
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        var monitors = new MonitorInfo[screens.Length];
+        for (int i = 0; i < screens.Length; i++)
+        {
+            monitors[i] = new MonitorInfo(
+                i,
+                screens[i].DeviceName,
+                screens[i].Bounds.Width,
+                screens[i].Bounds.Height,
+                screens[i].Primary);
+        }
+        return monitors;
+    }
+
+    public void SelectMonitor(int monitorIndex)
+    {
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        if (monitorIndex >= 0 && monitorIndex < screens.Length)
+        {
+            _selectedMonitor = monitorIndex;
+        }
     }
 
     public byte[] CaptureFrameAsJpeg(long quality = 70)
     {
-        var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
+        var screen = GetSelectedScreen();
+        var bounds = screen.Bounds;
 
         using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bitmap))
@@ -36,9 +63,24 @@ public sealed class ScreenCapture
         return ms.ToArray();
     }
 
+    private System.Windows.Forms.Screen GetSelectedScreen()
+    {
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        if (_selectedMonitor >= 0 && _selectedMonitor < screens.Length)
+        {
+            return screens[_selectedMonitor];
+        }
+        return System.Windows.Forms.Screen.PrimaryScreen!;
+    }
+
     private static ImageCodecInfo GetJpegEncoder()
     {
         return ImageCodecInfo.GetImageEncoders()
             .First(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
+    }
+
+    public void Dispose()
+    {
+        // GDI capture has no persistent resources to clean up
     }
 }

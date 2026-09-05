@@ -29,7 +29,17 @@ public enum MessageType : byte
     HostOffline = 27,       // Relay -> Admin: a host went offline
     HostOnline = 28,        // Relay -> Admin: a host came online
     AdminAuth = 29,         // Admin -> Relay: authenticate as admin
-    AdminAuthAck = 30       // Relay -> Admin: auth accepted/rejected
+    AdminAuthAck = 30,      // Relay -> Admin: auth accepted/rejected
+
+    // ---- Feature messages (Phase 5) ----
+    FileTransferRequest = 40,   // either direction: request to send a file
+    FileTransferAccept = 41,    // either direction: accept file transfer
+    FileTransferData = 42,      // either direction: chunk of file data
+    FileTransferComplete = 43,  // either direction: file transfer done
+    FileTransferCancel = 44,    // either direction: cancel transfer
+    ChatMessage = 50,           // either direction: text chat
+    MonitorList = 60,           // Host -> Admin: list of available monitors
+    MonitorSelect = 61          // Admin -> Host: select which monitor to capture
 }
 
 public readonly record struct FrameHeader(
@@ -122,3 +132,55 @@ public readonly record struct AdminAuthAckMessage(
     bool Accepted,
     string? RejectReason
 );
+
+// ---- File transfer messages ----
+
+public readonly record struct FileTransferRequestMessage(
+    string TransferId,
+    string FileName,
+    long FileSize,
+    string? DestinationPath
+);
+
+public readonly record struct FileTransferAcceptMessage(string TransferId);
+
+public readonly record struct FileTransferDataMessage(
+    string TransferId,
+    int ChunkIndex,
+    int TotalChunks,
+    byte[] Data
+);
+
+public readonly record struct FileTransferCompleteMessage(
+    string TransferId,
+    string Checksum
+);
+
+public readonly record struct FileTransferCancelMessage(
+    string TransferId,
+    string? Reason
+);
+
+// ---- Chat ----
+
+public readonly record struct ChatMessageData(
+    string SenderName,
+    string Text,
+    DateTime TimestampUtc
+);
+
+// ---- Monitor selection ----
+
+public readonly record struct MonitorListMessage(
+    MonitorInfoData[] Monitors
+);
+
+public readonly record struct MonitorInfoData(
+    int Index,
+    string Name,
+    int Width,
+    int Height,
+    bool IsPrimary
+);
+
+public readonly record struct MonitorSelectMessage(int MonitorIndex);

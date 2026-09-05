@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using Microsoft.Win32;
 using RemoteAdminTool.Shared;
 
 namespace RemoteAdminTool.Viewer;
@@ -13,14 +15,16 @@ public partial class MainWindow : Window
     private string? _activeSessionMachineId;
     private int _remoteWidth;
     private int _remoteHeight;
+    private bool _chatVisible;
 
-    // Observable collection for the node list in the sidebar
     public ObservableCollection<HostInfoMessage> Nodes { get; } = new();
+    public ObservableCollection<ChatEntry> ChatEntries { get; } = new();
 
     public MainWindow()
     {
         InitializeComponent();
         NodeList.ItemsSource = Nodes;
+        ChatMessages.ItemsSource = ChatEntries;
     }
 
     // ---- Connection to Relay ----
@@ -34,8 +38,7 @@ public partial class MainWindow : Window
             Nodes.Clear();
             ConnectButton.Content = "Connect to Relay";
             StatusText.Text = "Disconnected";
-            StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#f38ba8"));
+            SetStatusColor("#f38ba8");
             return;
         }
 
@@ -45,39 +48,44 @@ public partial class MainWindow : Window
         _client.HostWentOffline += OnHostWentOffline;
         _client.SessionStarted += OnSessionStarted;
         _client.FrameReceived += OnFrameReceived;
+        _client.ClipboardReceived += OnClipboardReceived;
+        _client.MonitorListReceived += OnMonitorListReceived;
+        _client.ChatReceived += OnChatReceived;
         _client.Disconnected += OnDisconnected;
 
         try
         {
             StatusText.Text = "Connecting...";
-            StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#f9e2af"));
+            SetStatusColor("#f9e2af");
 
             var (accepted, reason) = await _client.ConnectAsync(RelayUrlBox.Text, AdminTokenBox.Password);
 
             if (!accepted)
             {
                 StatusText.Text = $"Rejected: {reason}";
-                StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#f38ba8"));
+                SetStatusColor("#f38ba8");
                 await _client.DisposeAsync();
                 _client = null;
                 return;
             }
 
             StatusText.Text = "Connected to relay";
-            StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#a6e3a1"));
+            SetStatusColor("#a6e3a1");
             ConnectButton.Content = "Disconnect from Relay";
         }
         catch (Exception ex)
         {
             StatusText.Text = $"Failed: {ex.Message}";
-            StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#f38ba8"));
+            SetStatusColor("#f38ba8");
             if (_client is not null) await _client.DisposeAsync();
             _client = null;
         }
+    }
+
+    private void SetStatusColor(string hex)
+    {
+        StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
     }
 
     // ---- Host list events ----
@@ -87,10 +95,7 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             Nodes.Clear();
-            foreach (var host in hosts)
-            {
-                Nodes.Add(host);
-            }
+            foreach (var host in hosts) Nodes.Add(host);
         });
     }
 
@@ -98,16 +103,11 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            // Add if not already in the list
             var exists = false;
             foreach (var node in Nodes)
-            {
                 if (node.MachineId == msg.MachineId) { exists = true; break; }
-            }
             if (!exists)
-            {
                 Nodes.Add(new HostInfoMessage(msg.MachineId, msg.MachineName, "", true, DateTime.UtcNow));
-            }
         });
     }
 
@@ -116,19 +116,10 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             for (int i = Nodes.Count - 1; i >= 0; i--)
-            {
-                if (Nodes[i].MachineId == msg.MachineId)
-                {
-                    Nodes.RemoveAt(i);
-                    break;
-                }
-            }
+                if (Nodes[i].MachineId == msg.MachineId) { Nodes.RemoveAt(i); break; }
 
-            // If the active session host went offline, clear the screen
             if (_activeSessionMachineId == msg.MachineId)
-            {
                 EndSessionUI();
-            }
         });
     }
 
@@ -162,7 +153,6 @@ public partial class MainWindow : Window
             bitmap.Freeze();
             RemoteScreenImage.Source = bitmap;
 
-            // Update remote dimensions from the actual frame if not set
             if (_remoteWidth == 0 || _remoteHeight == 0)
             {
                 _remoteWidth = bitmap.PixelWidth;
@@ -176,8 +166,7 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             StatusText.Text = $"Disconnected: {reason}";
-            StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#f38ba8"));
+            SetStatusColor("#f38ba8");
             ConnectButton.Content = "Connect to Relay";
             Nodes.Clear();
             EndSessionUI();
@@ -185,22 +174,151 @@ public partial class MainWindow : Window
         });
     }
 
+    // ---- Clipboard ----
+
+    private void OnClipboardReceived(object? sender, string text)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            try { Clipboard.SetText(text); }
+            catch { /* clipboard may be locked */ }
+        });
+    }
+
+    private async void ClipboardSyncButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client is null) return;
+        try
+        {
+            var text = Clipboard.GetText();
+            if (!string.IsNullOrEmpty(text))
+            {
+                await _client.SendClipboardAsync(text);
+            }
+        }
+        catch { /* clipboard may be locked */ }
+    }
+
+    // ---- Monitor selection ----
+
+    private void OnMonitorListReceived(object? sender, MonitorInfoData[] monitors)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            MonitorSelector.Items.Clear();
+            foreach (var mon in monitors)
+            {
+                var label = $"{mon.Name} ({mon.Width}x{mon.Height}){(mon.IsPrimary ? " ★" : "")}";
+                MonitorSelector.Items.Add(new MonitorComboItem(mon.Index, label));
+            }
+            if (MonitorSelector.Items.Count > 0)
+            {
+                MonitorSelector.SelectedIndex = 0;
+                MonitorSelector.Visibility = Visibility.Visible;
+            }
+        });
+    }
+
+    private async void MonitorSelector_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_client is null || MonitorSelector.SelectedItem is not MonitorComboItem item) return;
+        await _client.SelectMonitorAsync(item.Index);
+    }
+
+    // ---- Chat ----
+
+    private void OnChatReceived(object? sender, ChatMessageData msg)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            ChatEntries.Add(new ChatEntry(msg.SenderName, msg.Text));
+            ChatMessages.ScrollIntoView(ChatEntries[^1]);
+        });
+    }
+
+    private void ChatToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        _chatVisible = !_chatVisible;
+        ChatColumn.Width = _chatVisible ? new GridLength(280) : new GridLength(0);
+        ChatPanel.Visibility = _chatVisible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void ChatSendButton_Click(object sender, RoutedEventArgs e)
+    {
+        await SendChatMessageAsync();
+    }
+
+    private async void ChatInput_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            await SendChatMessageAsync();
+            e.Handled = true;
+        }
+    }
+
+    private async Task SendChatMessageAsync()
+    {
+        if (_client is null || string.IsNullOrWhiteSpace(ChatInput.Text)) return;
+        var text = ChatInput.Text.Trim();
+        ChatInput.Clear();
+
+        ChatEntries.Add(new ChatEntry("Admin", text));
+        ChatMessages.ScrollIntoView(ChatEntries[^1]);
+
+        await _client.SendChatAsync("Admin", text);
+    }
+
+    // ---- File Transfer ----
+
+    private async void FileTransferButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client is null || _activeSessionMachineId is null) return;
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select file to send to remote machine",
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            var stream = _client.GetStream();
+            if (stream is null) return;
+
+            var transferService = new FileTransferService();
+            try
+            {
+                StatusText.Text = $"Sending {Path.GetFileName(dialog.FileName)}...";
+                SetStatusColor("#f9e2af");
+
+                await transferService.SendFileAsync(stream, dialog.FileName, null);
+
+                StatusText.Text = "File sent successfully!";
+                SetStatusColor("#a6e3a1");
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Transfer failed: {ex.Message}";
+                SetStatusColor("#f38ba8");
+            }
+        }
+    }
+
     // ---- Node list interaction ----
 
-    private async void NodeList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private async void NodeList_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (_client is null || NodeList.SelectedItem is not HostInfoMessage selectedHost)
-            return;
-
+        if (_client is null || NodeList.SelectedItem is not HostInfoMessage selectedHost) return;
         await _client.ConnectToHostAsync(selectedHost.MachineId);
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         if (_client is not null)
-        {
             await _client.RequestHostListAsync();
-        }
     }
 
     private async void DisconnectSessionButton_Click(object sender, RoutedEventArgs e)
@@ -218,10 +336,11 @@ public partial class MainWindow : Window
         RemoteScreenImage.Source = null;
         SessionToolbar.Visibility = Visibility.Collapsed;
         NoSessionPlaceholder.Visibility = Visibility.Visible;
+        MonitorSelector.Visibility = Visibility.Collapsed;
+        MonitorSelector.Items.Clear();
     }
 
     // ---- Input forwarding ----
-    // Maps the local mouse position over the Image control back to remote screen coordinates.
 
     private (int X, int Y) ToRemoteCoords(MouseEventArgs e)
     {
@@ -293,8 +412,13 @@ public partial class MainWindow : Window
     {
         base.OnClosed(e);
         if (_client is not null)
-        {
             await _client.DisposeAsync();
-        }
     }
+}
+
+// Helper types for UI bindings
+public record ChatEntry(string Sender, string Text);
+public record MonitorComboItem(int Index, string Label)
+{
+    public override string ToString() => Label;
 }

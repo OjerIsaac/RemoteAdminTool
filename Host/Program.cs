@@ -1,43 +1,93 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Serilog;
 using RemoteAdminTool.Host;
 
-// ---- Load configuration ----
-var config = new ConfigurationBuilder()
-    .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-    .AddEnvironmentVariables(prefix: "RAT_")
-    .Build();
+// ---- Serilog structured logging ----
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File(
+        Path.Combine(AppContext.BaseDirectory, "logs", "host-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
 
-var relayUrl = config["RelayUrl"] ?? "ws://localhost:5050/relay";
-var authToken = config["HostToken"] ?? "host-secret-change-me";
-var machineName = config["MachineName"] ?? Environment.MachineName;
-
-// Generate a stable machine ID on first run (persisted in appsettings.json)
-var machineId = config["MachineId"];
-if (string.IsNullOrEmpty(machineId))
+try
 {
-    machineId = Guid.NewGuid().ToString("N")[..12]; // short 12-char ID
-    Console.WriteLine($"Generated new Machine ID: {machineId}");
-    Console.WriteLine("Add this to your appsettings.json to keep it stable across restarts.");
+    // ---- Detect service mode ----
+    var isService = args.Contains("--service");
+
+    if (isService)
+    {
+        // Run as a Windows Service (headless, no tray icon, unattended mode)
+        Log.Information("Starting as Windows Service");
+
+        var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder(args);
+        builder.Services.AddWindowsService(options =>
+        {
+            options.ServiceName = "RemoteAdminHost";
+        });
+
+        builder.Configuration
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: true)
+            .AddEnvironmentVariables(prefix: "RAT_");
+
+        builder.Services.AddHostedService<HostBackgroundService>();
+        builder.Services.AddSerilog();
+
+        var host = builder.Build();
+        await host.RunAsync();
+    }
+    else
+    {
+        // Run as interactive desktop app with tray icon
+        Log.Information("Starting as interactive desktop app");
+
+        var config = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+            .AddEnvironmentVariables(prefix: "RAT_")
+            .Build();
+
+        var relayUrl = config["RelayUrl"] ?? "wss://localhost:5050/relay";
+        var authToken = config["HostToken"] ?? "host-secret-change-me";
+        var machineName = config["MachineName"] ?? Environment.MachineName;
+        var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
+
+        var machineId = config["MachineId"];
+        if (string.IsNullOrEmpty(machineId))
+        {
+            machineId = Guid.NewGuid().ToString("N")[..12];
+            Log.Warning("Generated new Machine ID: {MachineId}. Add to appsettings.json for persistence.", machineId);
+        }
+
+        var trayContext = new TrayApplicationContext();
+        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, unattendedMode);
+
+        agent.SessionStateChanged += (_, isConnected) =>
+        {
+            trayContext.SetConnectedState(isConnected);
+        };
+
+        agent.ConnectionStateChanged += (_, status) =>
+        {
+            Log.Information("[HostAgent] {Status}", status);
+        };
+
+        _ = agent.RunAsync();
+
+        System.Windows.Forms.Application.Run(trayContext);
+    }
 }
-
-// ---- Set up tray icon ----
-var trayContext = new TrayApplicationContext();
-
-// ---- Set up host agent ----
-var agent = new HostAgent(relayUrl, machineId, machineName, authToken);
-
-agent.SessionStateChanged += (_, isConnected) =>
+catch (Exception ex)
 {
-    trayContext.SetConnectedState(isConnected);
-};
-
-agent.ConnectionStateChanged += (_, status) =>
+    Log.Fatal(ex, "Host agent terminated unexpectedly");
+}
+finally
 {
-    Console.WriteLine($"[Host] {status}");
-};
-
-// Fire and forget — runs for the app's lifetime with auto-reconnect
-_ = agent.RunAsync();
-
-System.Windows.Forms.Application.Run(trayContext);
+    await Log.CloseAndFlushAsync();
+}
