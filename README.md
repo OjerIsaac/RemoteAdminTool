@@ -134,7 +134,7 @@ dotnet run --project Viewer
 
 ### 4. Run in Visual Studio (recommended)
 
-1. Right-click the **Solution** → **Configure Startup Projects...**
+1. Right-click the **Solution** -- **Configure Startup Projects...**
 2. Select **Multiple startup projects**
 3. Set all three to **Start** (RelayServer first)
 4. Press **F5**
@@ -146,7 +146,7 @@ In the Viewer window:
 2. **Admin Token:** `f7941a09575e414dbf96b253`
 3. Click **Connect to Relay**
 4. Your machine should appear in the sidebar
-5. Click on it → Accept the consent dialog on the Host → You're in!
+5. Click on it -- Accept the consent dialog on the Host -- You're in!
 
 ---
 
