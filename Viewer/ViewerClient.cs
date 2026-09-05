@@ -1,42 +1,91 @@
-using System.Net.Sockets;
+using System.IO;
+using System.Net.WebSockets;
 using System.Text.Json;
 using RemoteAdminTool.Shared;
 
 namespace RemoteAdminTool.Viewer;
 
+/// <summary>
+/// Admin viewer client that connects to the relay server, authenticates as admin,
+/// receives the list of online hosts, and can start sessions with any of them.
+/// During a session, screen frames arrive from the relay and input events are sent to the relay.
+/// </summary>
 public sealed class ViewerClient : IAsyncDisposable
 {
-    private TcpClient? _tcpClient;
-    private NetworkStream? _stream;
+    private ClientWebSocket? _ws;
+    private WebSocketStreamAdapter? _stream;
     private CancellationTokenSource? _cts;
 
     public event EventHandler<byte[]>? FrameReceived;
+    public event EventHandler<HostInfoMessage[]>? HostListReceived;
+    public event EventHandler<HostOnlineMessage>? HostCameOnline;
+    public event EventHandler<HostOfflineMessage>? HostWentOffline;
+    public event EventHandler<SessionStartedMessage>? SessionStarted;
     public event EventHandler<string>? Disconnected;
 
-    public async Task<HelloAckMessage> ConnectAsync(string host, int port, string authToken, CancellationToken ct = default)
+    /// <summary>
+    /// Connect to the relay server and authenticate as admin.
+    /// Returns true if authenticated successfully.
+    /// </summary>
+    public async Task<(bool Accepted, string? RejectReason)> ConnectAsync(
+        string relayUrl, string adminToken, CancellationToken ct = default)
     {
-        _tcpClient = new TcpClient();
-        await _tcpClient.ConnectAsync(host, port, ct);
-        _stream = _tcpClient.GetStream();
+        _ws = new ClientWebSocket();
+        await _ws.ConnectAsync(new Uri(relayUrl), ct);
+        _stream = new WebSocketStreamAdapter(_ws);
 
-        var hello = new HelloMessage("1.0.0", authToken);
-        await MessageFraming.WriteFrameAsync(_stream, MessageType.Hello,
-            JsonSerializer.SerializeToUtf8Bytes(hello), ct);
+        // Authenticate as admin
+        var auth = new AdminAuthMessage(adminToken);
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.AdminAuth,
+            JsonSerializer.SerializeToUtf8Bytes(auth), ct);
 
+        // Wait for auth ack
         var (type, payload) = await MessageFraming.ReadFrameAsync(_stream, ct);
-        if (type != MessageType.HelloAck)
+        if (type != MessageType.AdminAuthAck)
         {
-            throw new InvalidDataException("Expected HelloAck from host.");
+            throw new InvalidDataException("Expected AdminAuthAck from relay.");
         }
 
-        var ack = JsonSerializer.Deserialize<HelloAckMessage>(payload);
+        var ack = JsonSerializer.Deserialize<AdminAuthAckMessage>(payload);
         if (ack.Accepted)
         {
             _cts = new CancellationTokenSource();
             _ = ReceiveLoopAsync(_cts.Token);
         }
 
-        return ack;
+        return (ack.Accepted, ack.RejectReason);
+    }
+
+    /// <summary>
+    /// Request the relay to start a session with a specific host.
+    /// </summary>
+    public async Task ConnectToHostAsync(string machineId)
+    {
+        if (_stream is null) return;
+        var msg = new ConnectToHostMessage(machineId);
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.ConnectToHost,
+            JsonSerializer.SerializeToUtf8Bytes(msg));
+    }
+
+    /// <summary>
+    /// Tell the relay to end the current session.
+    /// </summary>
+    public async Task DisconnectFromHostAsync(string machineId)
+    {
+        if (_stream is null) return;
+        var msg = new DisconnectFromHostMessage(machineId);
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.DisconnectFromHost,
+            JsonSerializer.SerializeToUtf8Bytes(msg));
+    }
+
+    /// <summary>
+    /// Request an updated host list from the relay.
+    /// </summary>
+    public async Task RequestHostListAsync()
+    {
+        if (_stream is null) return;
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.RequestHostList,
+            Array.Empty<byte>());
     }
 
     private async Task ReceiveLoopAsync(CancellationToken ct)
@@ -46,22 +95,49 @@ public sealed class ViewerClient : IAsyncDisposable
             while (!ct.IsCancellationRequested && _stream is not null)
             {
                 var (type, payload) = await MessageFraming.ReadFrameAsync(_stream, ct);
-                if (type == MessageType.FrameData)
+
+                switch (type)
                 {
-                    FrameReceived?.Invoke(this, payload);
-                }
-                else if (type == MessageType.Disconnect)
-                {
-                    break;
+                    case MessageType.HostList:
+                        var list = JsonSerializer.Deserialize<HostListMessage>(payload);
+                        HostListReceived?.Invoke(this, list.Hosts);
+                        break;
+
+                    case MessageType.HostOnline:
+                        var online = JsonSerializer.Deserialize<HostOnlineMessage>(payload);
+                        HostCameOnline?.Invoke(this, online);
+                        break;
+
+                    case MessageType.HostOffline:
+                        var offline = JsonSerializer.Deserialize<HostOfflineMessage>(payload);
+                        HostWentOffline?.Invoke(this, offline);
+                        break;
+
+                    case MessageType.SessionStarted:
+                        var session = JsonSerializer.Deserialize<SessionStartedMessage>(payload);
+                        SessionStarted?.Invoke(this, session);
+                        break;
+
+                    case MessageType.FrameData:
+                        FrameReceived?.Invoke(this, payload);
+                        break;
+
+                    case MessageType.Disconnect:
+                        Disconnected?.Invoke(this, "Relay closed the connection.");
+                        return;
+
+                    case MessageType.Heartbeat:
+                        break;
                 }
             }
-            Disconnected?.Invoke(this, "Host closed the connection.");
         }
         catch (Exception ex)
         {
             Disconnected?.Invoke(this, ex.Message);
         }
     }
+
+    // ---- Input forwarding (sent to relay, which forwards to host) ----
 
     public Task SendMouseMoveAsync(int x, int y) =>
         SendAsync(MessageType.MouseMove, new MouseMoveMessage(x, y));
@@ -90,6 +166,10 @@ public sealed class ViewerClient : IAsyncDisposable
             catch { /* best effort */ }
         }
         _stream?.Dispose();
-        _tcpClient?.Dispose();
+        if (_ws is not null)
+        {
+            try { _ws.Dispose(); }
+            catch { /* best effort */ }
+        }
     }
 }

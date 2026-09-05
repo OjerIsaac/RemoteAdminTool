@@ -16,7 +16,20 @@ public enum MessageType : byte
     KeyEvent = 7,          // Viewer -> Host
     ClipboardSync = 8,      // either direction
     Disconnect = 9,        // either direction
-    Heartbeat = 10          // either direction, keep-alive
+    Heartbeat = 10,         // either direction, keep-alive
+
+    // ---- Relay / hub-and-spoke messages ----
+    HostRegister = 20,      // Host -> Relay: "I'm online, here's my info"
+    HostRegisterAck = 21,   // Relay -> Host: registration accepted/rejected
+    HostList = 22,          // Relay -> Admin: list of online hosts
+    RequestHostList = 23,   // Admin -> Relay: "send me the current host list"
+    ConnectToHost = 24,     // Admin -> Relay: "connect me to host X"
+    SessionStarted = 25,    // Relay -> Admin + Host: session is established
+    DisconnectFromHost = 26, // Admin -> Relay: end current session
+    HostOffline = 27,       // Relay -> Admin: a host went offline
+    HostOnline = 28,        // Relay -> Admin: a host came online
+    AdminAuth = 29,         // Admin -> Relay: authenticate as admin
+    AdminAuthAck = 30       // Relay -> Admin: auth accepted/rejected
 }
 
 public readonly record struct FrameHeader(
@@ -57,4 +70,55 @@ public readonly record struct HelloAckMessage(
     string? RejectReason,
     int ScreenWidth,
     int ScreenHeight
+);
+
+// ---- Relay model messages ----
+
+public readonly record struct HostRegisterMessage(
+    string MachineId,
+    string MachineName,
+    string OsVersion,
+    string HostVersion,
+    string AuthToken
+);
+
+public readonly record struct HostRegisterAckMessage(
+    bool Accepted,
+    string? RejectReason
+);
+
+public readonly record struct HostInfoMessage(
+    string MachineId,
+    string MachineName,
+    string OsVersion,
+    bool IsOnline,
+    DateTime LastSeen
+);
+
+public readonly record struct HostListMessage(
+    HostInfoMessage[] Hosts
+);
+
+public readonly record struct RequestHostListMessage();
+
+public readonly record struct ConnectToHostMessage(string MachineId);
+
+public readonly record struct SessionStartedMessage(
+    string MachineId,
+    string MachineName,
+    int ScreenWidth,
+    int ScreenHeight
+);
+
+public readonly record struct DisconnectFromHostMessage(string MachineId);
+
+public readonly record struct HostOfflineMessage(string MachineId, string MachineName);
+
+public readonly record struct HostOnlineMessage(string MachineId, string MachineName);
+
+public readonly record struct AdminAuthMessage(string AuthToken);
+
+public readonly record struct AdminAuthAckMessage(
+    bool Accepted,
+    string? RejectReason
 );
