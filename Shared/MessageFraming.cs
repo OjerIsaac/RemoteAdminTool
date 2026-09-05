@@ -9,13 +9,14 @@ public static class MessageFraming
 {
     public static async Task WriteFrameAsync(Stream stream, MessageType type, byte[] payload, CancellationToken ct = default)
     {
-        var lengthPrefix = BitConverter.GetBytes(payload.Length + 1); // +1 for the type byte
-        await stream.WriteAsync(lengthPrefix, ct);
-        stream.WriteByte((byte)type);
+        var frame = new byte[4 + 1 + payload.Length];
+        BitConverter.TryWriteBytes(frame.AsSpan(0, 4), payload.Length + 1); // +1 for the type byte
+        frame[4] = (byte)type;
         if (payload.Length > 0)
         {
-            await stream.WriteAsync(payload, ct);
+            payload.CopyTo(frame, 5);
         }
+        await stream.WriteAsync(frame, ct);
         await stream.FlushAsync(ct);
     }
 

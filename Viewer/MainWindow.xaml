@@ -51,7 +51,7 @@
                                Foreground="#cba6f7" Margin="0,0,0,12"/>
 
                     <TextBlock Text="Relay Server" Foreground="#a6adc8" FontSize="11" Margin="0,0,0,4"/>
-                    <TextBox x:Name="RelayUrlBox" Text="wss://localhost:5050/relay"
+                    <TextBox x:Name="RelayUrlBox" Text="ws://localhost:5050/relay"
                              Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
                              Padding="8,6" FontSize="12"/>
 
