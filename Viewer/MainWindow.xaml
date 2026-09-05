@@ -1,0 +1,24 @@
+<Window x:Class="RemoteAdminTool.Viewer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Remote Admin Viewer" Height="720" Width="1280">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8">
+            <TextBox x:Name="HostBox" Width="160" Text="my-home-server.local" Margin="0,0,4,0"/>
+            <TextBox x:Name="PortBox" Width="60" Text="5900" Margin="0,0,4,0"/>
+            <PasswordBox x:Name="TokenBox" Width="160" Margin="0,0,4,0"/>
+            <Button x:Name="ConnectButton" Content="Connect" Click="ConnectButton_Click" Padding="8,2"/>
+            <TextBlock x:Name="StatusText" Margin="12,4,0,0" VerticalAlignment="Center" Text="Disconnected"/>
+        </StackPanel>
+
+        <Image x:Name="RemoteScreenImage"
+               Stretch="Uniform"
+               MouseMove="RemoteScreenImage_MouseMove"
+               MouseDown="RemoteScreenImage_MouseDown"
+               MouseUp="RemoteScreenImage_MouseUp"
+               MouseWheel="RemoteScreenImage_MouseWheel"
+               Focusable="True"
+               KeyDown="RemoteScreenImage_KeyDown"
+               KeyUp="RemoteScreenImage_KeyUp"/>
+    </DockPanel>
+</Window>
