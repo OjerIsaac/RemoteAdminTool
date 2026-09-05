@@ -333,9 +333,3 @@ logs/
 | Logging | Serilog |
 | Capture | DXGI Desktop Duplication / GDI+ |
 | Input | Win32 SendInput API |
-
----
-
-## License
-
-Private project — not open source.
