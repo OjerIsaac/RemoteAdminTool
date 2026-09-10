@@ -31,8 +31,11 @@ var hostToken = config["Auth:HostToken"]
 // Make host token available as env var so ConnectionHub can read it
 Environment.SetEnvironmentVariable("Auth__HostToken", hostToken);
 
-var listenPort = int.TryParse(config["RelayServer:Port"] ?? Environment.GetEnvironmentVariable("RAT_PORT"), out var p)
-    ? p : 5050;
+var listenPort = int.TryParse(
+    config["RelayServer:Port"]
+    ?? Environment.GetEnvironmentVariable("RAT_PORT")
+    ?? Environment.GetEnvironmentVariable("PORT"),   // Render injects PORT automatically
+    out var p) ? p : 5050;
 var useTlsStr = config["RelayServer:TLS"] ?? Environment.GetEnvironmentVariable("RAT_TLS");
 var useTls = useTlsStr != "false" && useTlsStr != "False";
 var pfxPath = config["RelayServer:CertPath"]
