@@ -1,6 +1,6 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
-using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using Serilog;
 using RemoteAdminTool.RelayServer;
 
@@ -40,15 +40,25 @@ var pfxPath = config["RelayServer:CertPath"]
 var pfxPassword = config["RelayServer:CertPassword"]
     ?? Environment.GetEnvironmentVariable("RAT_CERT_PASSWORD") ?? "dev-password";
 
-// ---- MySQL / EF Core ----
-var connectionString = config.GetConnectionString("MySql")
-    ?? Environment.GetEnvironmentVariable("RAT_MYSQL_CONNECTION")
-    ?? "server=localhost;port=3306;database=remote_admin;user=root;password=;";
+// ---- PostgreSQL / EF Core ----
+// On Render, the DATABASE_URL env var is the standard connection string.
+// Locally, fall back to the appsettings.json value.
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+    ?? config.GetConnectionString("Postgres")
+    ?? "Host=localhost;Port=5432;Database=remote_admin;Username=postgres;Password=;";
 
 builder.Services.AddDbContextFactory<RelayDbContext>(options =>
-    options.UseMySql(connectionString,
-        ServerVersion.AutoDetect(connectionString),
-        mySqlOptions => mySqlOptions.EnableRetryOnFailure(5)));
+    options.UseNpgsql(connectionString,
+        npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(5)));
+
+// ---- Forwarded Headers (required on Render — TLS is terminated at their edge) ----
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Trust all proxies (Render's infra) — restrict to specific IPs in high-security setups
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddSingleton<TenantStore>();
 
@@ -78,6 +88,9 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 var app = builder.Build();
+
+// Must be first middleware — lets Kestrel know the original scheme was WSS/HTTPS
+app.UseForwardedHeaders();
 
 // ---- Initialize database + tenant store ----
 var tenantStore = app.Services.GetRequiredService<TenantStore>();
@@ -136,10 +149,10 @@ Console.WriteLine("Environment variables:");
 Console.WriteLine("  RAT_SUPER_ADMIN_TOKEN   — Super admin token (platform owner)");
 Console.WriteLine("  RAT_HOST_TOKEN          — Host registration token");
 Console.WriteLine("  RAT_PORT                — Listen port (default: 5050)");
-Console.WriteLine("  RAT_TLS                 — Set to 'false' to disable TLS");
+Console.WriteLine("  RAT_TLS                 — Set to 'false' to disable TLS (always false on Render)");
 Console.WriteLine("  RAT_CERT_PATH           — Path to .pfx certificate file");
 Console.WriteLine("  RAT_CERT_PASSWORD       — Certificate password");
-Console.WriteLine("  RAT_MYSQL_CONNECTION    — MySQL connection string");
+Console.WriteLine("  DATABASE_URL            — PostgreSQL connection string (set automatically by Render Postgres)");
 Console.WriteLine();
 
 app.Run();

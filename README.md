@@ -148,15 +148,16 @@ dotnet build
 
 Or open `RemoteAdminTool.sln` in Visual Studio → **Ctrl+Shift+B**.
 
-### 2. Create the Database
+### 2. Local Dev with PostgreSQL
 
-Open **phpMyAdmin** (`http://localhost/phpmyadmin`) or your MySQL client:
+If you don't have PostgreSQL locally, the easiest way is **[Postgres.app](https://postgresapp.com/)** (Mac) or install via `winget install PostgreSQL.PostgreSQL` (Windows).
 
+Then create the database:
 ```sql
-CREATE DATABASE remote_admin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE remote_admin;
 ```
 
-The relay server auto-creates the `Tenants` table on first run.
+The relay server auto-creates the `Tenants` table via `EnsureCreatedAsync()` on startup — no migrations needed.
 
 ### 3. Credentials at a Glance
 
@@ -164,7 +165,7 @@ The relay server auto-creates the `Tenants` table on first run.
 |------|-----|---------------|
 | `RelayServer/appsettings.json` | `Auth:SuperAdminToken` | `f7941a09575e414dbf96b253` |
 | `RelayServer/appsettings.json` | `Auth:HostToken` | `d6a6ac2563a8443ea686346c` |
-| `RelayServer/appsettings.json` | `ConnectionStrings:MySql` | `server=localhost;port=3306;database=remote_admin;user=root;password=;` |
+| `RelayServer/appsettings.json` | `ConnectionStrings:DefaultConnection` | `Host=localhost;Database=remote_admin;Username=postgres;Password=postgres;` |
 | `Host/appsettings.json` | `HostToken` | `d6a6ac2563a8443ea686346c` |
 | `Host/appsettings.json` | `LicenseKey` | *(set per sub-admin after creating tenant)* |
 
@@ -206,7 +207,7 @@ In the Viewer:
 4. A dialog shows:
    - `LicenseKey` — baked into the Host EXE for their end users
    - `AdminToken` — given to the sub-admin to log into the Viewer
-5. **Save both values** — they are generated once and stored in MySQL
+5. **Save both values** — they are generated once and stored in PostgreSQL
 
 ### Building the Host EXE for a Sub-Admin's End Users
 
@@ -284,7 +285,7 @@ Tell each sub-admin:
     "HostToken": "your-host-token"
   },
   "ConnectionStrings": {
-    "MySql": "server=localhost;port=3306;database=remote_admin;user=root;password=;"
+    "DefaultConnection": "Host=localhost;Database=remote_admin;Username=postgres;Password=postgres;"
   }
 }
 ```
@@ -293,7 +294,7 @@ Tell each sub-admin:
 |---------------------|-------------|---------|
 | `RAT_SUPER_ADMIN_TOKEN` | Super admin (platform owner) token | *(from appsettings)* |
 | `RAT_HOST_TOKEN` | Host registration token | *(from appsettings)* |
-| `RAT_MYSQL_CONNECTION` | MySQL connection string | *(from appsettings)* |
+| `RAT_POSTGRES_CONNECTION` | PostgreSQL connection string | *(from appsettings)* |
 | `RAT_PORT` | Relay listen port | `5050` |
 | `RAT_TLS` | Enable TLS (`true`/`false`) | `true` |
 | `RAT_CERT_PATH` | Path to .pfx certificate | *(auto-generated)* |
@@ -323,48 +324,54 @@ Tell each sub-admin:
 
 ---
 
-## Deployment (Production Relay Server)
+## Deployment (Render — Recommended)
 
-### 1. Provision a VPS
+[Render](https://render.com) is the recommended hosting platform. It provides a managed **Web Service** (for the relay) and managed **PostgreSQL** — no server config, no SSL cert setup, no systemd. TLS is handled automatically at Render's edge.
 
-Any Windows or Linux VPS works (DigitalOcean, Vultr, Hetzner, etc.). Minimum: 1 vCPU, 1 GB RAM.
-- Open port **5050** (or 443 with TLS) in the firewall
-- Install **.NET 8 Runtime** and **MySQL**
+### 1. Create a PostgreSQL Database on Render
 
-### 2. Create the Database
+1. Go to [render.com](https://render.com) → **New → PostgreSQL**
+2. Name it `remote-admin-db`, choose a region, pick a plan (**Starter $7/mo** minimum — free tier has a 90-day expiry)
+3. Once created, copy the **Internal Database URL** (used by the web service on Render) and the **External Database URL** (for local dev access if needed)
 
-```sql
-CREATE DATABASE remote_admin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'relayuser'@'localhost' IDENTIFIED BY 'strong-password';
-GRANT ALL PRIVILEGES ON remote_admin.* TO 'relayuser'@'localhost';
+### 2. Deploy the Relay as a Web Service
+
+1. Push your code to GitHub
+2. Go to Render → **New → Web Service** → connect your repo
+3. Configure:
+   - **Runtime:** Docker *or* use the native .NET build pack
+   - **Build Command:** `dotnet publish RelayServer/RelayServer.csproj -c Release -o ./publish`
+   - **Start Command:** `dotnet ./publish/RelayServer.dll`
+   - **Plan:** Starter ($7/mo) — **never use the free tier** (it sleeps after inactivity, killing all connected Host agents)
+4. Under **Environment Variables**, add:
+
+| Key | Value |
+|-----|-------|
+| `DATABASE_URL` | *(paste the Internal Database URL from step 1 — Render may set this automatically when you link the DB)* |
+| `RAT_SUPER_ADMIN_TOKEN` | *(generate: `openssl rand -hex 24`)* |
+| `RAT_HOST_TOKEN` | *(generate: `openssl rand -hex 24`)* |
+| `RAT_TLS` | `false` *(Render terminates TLS at their edge — Kestrel sees plain HTTP)* |
+| `RAT_PORT` | `10000` *(Render expects apps to listen on port 10000 by default)* |
+
+5. Click **Deploy** — Render builds and starts the relay. Your relay URL will be:
+   ```
+   wss://your-service-name.onrender.com/relay
+   ```
+
+> ✅ The app calls `app.UseForwardedHeaders()` so WebSocket upgrade requests work correctly even though Render terminates TLS before Kestrel.
+
+### 3. Update Host appsettings.json
+
+Now that your relay is live, set the real URL:
+```json
+{
+  "RelayUrl": "wss://your-service-name.onrender.com/relay",
+  "HostToken": "your-host-token",
+  "LicenseKey": "sub-admin-license-key"
+}
 ```
 
-### 3. Publish and Deploy the Relay
-
-```powershell
-# On your local machine
-dotnet publish RelayServer/RelayServer.csproj `
-  -c Release -r win-x64 --self-contained true `
-  -o publish/relay
-
-# Copy publish/relay/ to your VPS (SCP, FTP, etc.)
-```
-
-### 4. Set Secure Tokens and Run
-
-On the VPS, create a `.env` file or set environment variables:
-
-```bash
-export RAT_SUPER_ADMIN_TOKEN="$(openssl rand -hex 24)"
-export RAT_HOST_TOKEN="$(openssl rand -hex 24)"
-export RAT_MYSQL_CONNECTION="server=localhost;port=3306;database=remote_admin;user=relayuser;password=strong-password;"
-export RAT_TLS="false"   # or true with a cert
-export RAT_PORT=5050
-
-dotnet RelayServer.dll
-```
-
-> Once the relay is live, update `RelayUrl` in `Host/appsettings.json` and the Viewer's Relay URL field from `localhost` to your VPS IP/domain.
+And in the Viewer, change the Relay URL field to `wss://your-service-name.onrender.com/relay`.
 
 ### 5. Install Host as a Windows Service (End User Machines)
 
@@ -452,11 +459,12 @@ logs/
 
 | Component | Technology |
 |-----------|-----------|
-| Relay Server | ASP.NET Core 8, Kestrel, WebSockets, EF Core 8, Pomelo MySQL |
+| Relay Server | ASP.NET Core 8, Kestrel, WebSockets, EF Core 8, Npgsql (PostgreSQL) |
 | Host Agent | .NET 8, WinForms (tray), SharpDX (DXGI), Windows Service |
 | Admin Viewer | .NET 8, WPF |
 | Shared | .NET 8 Class Library |
-| Database | MySQL (via Entity Framework Core + Pomelo provider) |
+| Database | PostgreSQL (via Entity Framework Core + Npgsql provider) |
+| Hosting | Render (Web Service + Managed PostgreSQL) |
 | Logging | Serilog |
 | Screen Capture | DXGI Desktop Duplication / GDI+ |
 | Input Injection | Win32 SendInput API |

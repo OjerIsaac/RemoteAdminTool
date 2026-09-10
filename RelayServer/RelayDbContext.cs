@@ -4,7 +4,7 @@ namespace RemoteAdminTool.RelayServer;
 
 /// <summary>
 /// EF Core database context for the relay server.
-/// Manages the Tenants table in MySQL.
+/// Manages the Tenants table in PostgreSQL (hosted on Render).
 /// </summary>
 public sealed class RelayDbContext : DbContext
 {
