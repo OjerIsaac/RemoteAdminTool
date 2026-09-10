@@ -44,11 +44,31 @@ var pfxPassword = config["RelayServer:CertPassword"]
     ?? Environment.GetEnvironmentVariable("RAT_CERT_PASSWORD") ?? "dev-password";
 
 // ---- PostgreSQL / EF Core ----
-// On Render, the DATABASE_URL env var is the standard connection string.
-// Locally, fall back to the appsettings.json value.
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+// Render injects DATABASE_URL in URI format: postgres://user:pass@host:port/db
+// Npgsql requires key-value format: Host=...;Username=...;Password=...
+// The helper below converts between the two formats.
+static string BuildNpgsqlConnectionString(string raw)
+{
+    if (!raw.StartsWith("postgres://") && !raw.StartsWith("postgresql://"))
+        return raw; // already in key-value format (local dev)
+
+    var uri = new Uri(raw.Replace("postgres://", "postgresql://"));
+    var userInfo = uri.UserInfo.Split(':', 2);
+    var username = Uri.UnescapeDataString(userInfo[0]);
+    var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
+    var database = uri.AbsolutePath.TrimStart('/');
+    var port = uri.Port > 0 ? uri.Port : 5432;
+
+    // SSL Mode=Prefer works for both Render internal URLs (no SSL needed)
+    // and external URLs (SSL available). Avoids crash on internal network.
+    return $"Host={uri.Host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Prefer;Trust Server Certificate=true;";
+}
+
+var rawDbUrl = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? config.GetConnectionString("Postgres")
     ?? "Host=localhost;Port=5432;Database=remote_admin;Username=postgres;Password=;";
+
+var connectionString = BuildNpgsqlConnectionString(rawDbUrl);
 
 builder.Services.AddDbContextFactory<RelayDbContext>(options =>
     options.UseNpgsql(connectionString,
