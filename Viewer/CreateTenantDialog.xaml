@@ -1,0 +1,29 @@
+<Window x:Class="RemoteAdminTool.Viewer.CreateTenantDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create New Sub-Admin" Height="240" Width="400"
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e">
+
+    <StackPanel Margin="24">
+        <TextBlock Text="Create New Sub-Admin Tenant" FontSize="16" FontWeight="Bold"
+                   Foreground="#cba6f7" Margin="0,0,0,20"/>
+
+        <TextBlock Text="Display Name" Foreground="#a6adc8" FontSize="11" Margin="0,0,0,4"/>
+        <TextBox x:Name="DisplayNameBox" Background="#313244" Foreground="#cdd6f4"
+                 BorderBrush="#45475a" Padding="8,6" FontSize="13" Margin="0,0,0,12"/>
+
+        <TextBlock Text="Admin Email" Foreground="#a6adc8" FontSize="11" Margin="0,0,0,4"/>
+        <TextBox x:Name="AdminEmailBox" Background="#313244" Foreground="#cdd6f4"
+                 BorderBrush="#45475a" Padding="8,6" FontSize="13" Margin="0,0,0,20"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" Click="CancelButton_Click"
+                    Background="#45475a" Foreground="#cdd6f4"
+                    Padding="14,6" Margin="0,0,8,0" Cursor="Hand"/>
+            <Button Content="Create Tenant" Click="CreateButton_Click"
+                    Background="#a6e3a1" Foreground="#1e1e2e" FontWeight="SemiBold"
+                    Padding="14,6" Cursor="Hand"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

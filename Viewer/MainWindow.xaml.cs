@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
@@ -17,14 +16,17 @@ public partial class MainWindow : Window
     private int _remoteHeight;
     private bool _chatVisible;
 
+    // View-model collections
     public ObservableCollection<HostInfoMessage> Nodes { get; } = new();
     public ObservableCollection<ChatEntry> ChatEntries { get; } = new();
+    public ObservableCollection<TenantViewModel> Tenants { get; } = new();
 
     public MainWindow()
     {
         InitializeComponent();
         NodeList.ItemsSource = Nodes;
         ChatMessages.ItemsSource = ChatEntries;
+        TenantList.ItemsSource = Tenants;
     }
 
     // ---- Connection to Relay ----
@@ -36,9 +38,12 @@ public partial class MainWindow : Window
             await _client.DisposeAsync();
             _client = null;
             Nodes.Clear();
+            Tenants.Clear();
             ConnectButton.Content = "Connect to Relay";
             StatusText.Text = "Disconnected";
             SetStatusColor("#f38ba8");
+            // Hide super-admin-only UI
+            TabTenantsButton.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -52,13 +57,17 @@ public partial class MainWindow : Window
         _client.MonitorListReceived += OnMonitorListReceived;
         _client.ChatReceived += OnChatReceived;
         _client.Disconnected += OnDisconnected;
+        _client.TenantListReceived += OnTenantListReceived;
+        _client.TenantCreated += OnTenantCreated;
 
         try
         {
             StatusText.Text = "Connecting...";
             SetStatusColor("#f9e2af");
 
-            var (accepted, reason) = await _client.ConnectAsync(RelayUrlBox.Text, AdminTokenBox.Password);
+            var licenseKey = LicenseKeyBox.Text.Trim();
+            var (accepted, reason, isSuperAdmin) = await _client.ConnectAsync(
+                RelayUrlBox.Text, AdminTokenBox.Password, licenseKey);
 
             if (!accepted)
             {
@@ -69,9 +78,17 @@ public partial class MainWindow : Window
                 return;
             }
 
-            StatusText.Text = "Connected to relay";
+            StatusText.Text = isSuperAdmin ? "Connected (Super Admin)" : "Connected (Sub-Admin)";
             SetStatusColor("#a6e3a1");
             ConnectButton.Content = "Disconnect from Relay";
+
+            // Show Tenants tab only for super admin
+            if (isSuperAdmin)
+            {
+                TabTenantsButton.Visibility = Visibility.Visible;
+                // Auto-load tenant list
+                await _client.RequestTenantListAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -86,6 +103,38 @@ public partial class MainWindow : Window
     {
         StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
             (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
+    }
+
+    // ---- Tab switching ----
+
+    private void TabNodesButton_Click(object sender, RoutedEventArgs e)
+    {
+        NodePanel.Visibility = Visibility.Visible;
+        TenantPanel.Visibility = Visibility.Collapsed;
+        TabNodesButton.BorderBrush = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#a6e3a1"));
+        TabNodesButton.Foreground = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#a6e3a1"));
+        TabTenantsButton.BorderBrush = System.Windows.Media.Brushes.Transparent;
+        TabTenantsButton.Foreground = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#6c7086"));
+    }
+
+    private async void TabTenantsButton_Click(object sender, RoutedEventArgs e)
+    {
+        NodePanel.Visibility = Visibility.Collapsed;
+        TenantPanel.Visibility = Visibility.Visible;
+        TabTenantsButton.BorderBrush = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#cba6f7"));
+        TabTenantsButton.Foreground = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#cba6f7"));
+        TabNodesButton.BorderBrush = System.Windows.Media.Brushes.Transparent;
+        TabNodesButton.Foreground = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#6c7086"));
+
+        // Refresh tenant list
+        if (_client is not null)
+            await _client.RequestTenantListAsync();
     }
 
     // ---- Host list events ----
@@ -107,7 +156,7 @@ public partial class MainWindow : Window
             foreach (var node in Nodes)
                 if (node.MachineId == msg.MachineId) { exists = true; break; }
             if (!exists)
-                Nodes.Add(new HostInfoMessage(msg.MachineId, msg.MachineName, "", true, DateTime.UtcNow));
+                Nodes.Add(new HostInfoMessage(msg.MachineId, msg.MachineName, "", true, DateTime.UtcNow, msg.TenantId));
         });
     }
 
@@ -121,6 +170,79 @@ public partial class MainWindow : Window
             if (_activeSessionMachineId == msg.MachineId)
                 EndSessionUI();
         });
+    }
+
+    // ---- Tenant events (super admin only) ----
+
+    private void OnTenantListReceived(object? sender, TenantInfoMessage[] tenants)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            Tenants.Clear();
+            foreach (var t in tenants)
+                Tenants.Add(new TenantViewModel(t));
+        });
+    }
+
+    private void OnTenantCreated(object? sender, CreateTenantAckMessage ack)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (!ack.Success)
+            {
+                MessageBox.Show($"Failed to create tenant: {ack.Error}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            MessageBox.Show(
+                $"Tenant created successfully!\n\n" +
+                $"Tenant ID:    {ack.TenantId}\n" +
+                $"License Key:  {ack.LicenseKey}\n" +
+                $"Admin Token:  {ack.AdminToken}\n\n" +
+                $"Embed the License Key into the Host appsettings.json for this sub-admin's installer.\n" +
+                $"Give the Admin Token to the sub-admin to log into the Viewer.",
+                "New Tenant Created", MessageBoxButton.OK, MessageBoxImage.Information);
+        });
+    }
+
+    private async void CreateTenantButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client is null || !_client.IsSuperAdmin) return;
+
+        var dialog = new CreateTenantDialog();
+        if (dialog.ShowDialog() == true)
+        {
+            await _client.CreateTenantAsync(dialog.DisplayName, dialog.AdminEmail);
+        }
+    }
+
+    private void TenantList_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // Clicking a tenant could filter the node list — future enhancement
+        // For now, just switch to Nodes tab showing all hosts (super admin already sees all)
+        if (TenantList.SelectedItem is TenantViewModel selectedTenant)
+        {
+            TabNodesButton_Click(sender, new RoutedEventArgs());
+        }
+    }
+
+    private async void SuspendTenantButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client is null || !_client.IsSuperAdmin) return;
+        if (sender is System.Windows.Controls.Button btn && btn.Tag is string tenantId)
+        {
+            var result = MessageBox.Show(
+                $"Are you sure you want to suspend tenant {tenantId}?\nTheir nodes will be disconnected from the relay.",
+                "Suspend Tenant", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                await _client.SuspendTenantAsync(tenantId);
+                await _client.RequestTenantListAsync();
+            }
+        }
     }
 
     // ---- Session events ----
@@ -169,6 +291,8 @@ public partial class MainWindow : Window
             SetStatusColor("#f38ba8");
             ConnectButton.Content = "Connect to Relay";
             Nodes.Clear();
+            Tenants.Clear();
+            TabTenantsButton.Visibility = Visibility.Collapsed;
             EndSessionUI();
             _client = null;
         });
@@ -192,9 +316,7 @@ public partial class MainWindow : Window
         {
             var text = Clipboard.GetText();
             if (!string.IsNullOrEmpty(text))
-            {
                 await _client.SendClipboardAsync(text);
-            }
         }
         catch { /* clipboard may be locked */ }
     }
@@ -244,18 +366,11 @@ public partial class MainWindow : Window
         ChatPanel.Visibility = _chatVisible ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async void ChatSendButton_Click(object sender, RoutedEventArgs e)
-    {
-        await SendChatMessageAsync();
-    }
+    private async void ChatSendButton_Click(object sender, RoutedEventArgs e) => await SendChatMessageAsync();
 
     private async void ChatInput_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
-        {
-            await SendChatMessageAsync();
-            e.Handled = true;
-        }
+        if (e.Key == Key.Enter) { await SendChatMessageAsync(); e.Handled = true; }
     }
 
     private async Task SendChatMessageAsync()
@@ -263,10 +378,8 @@ public partial class MainWindow : Window
         if (_client is null || string.IsNullOrWhiteSpace(ChatInput.Text)) return;
         var text = ChatInput.Text.Trim();
         ChatInput.Clear();
-
         ChatEntries.Add(new ChatEntry("Admin", text));
         ChatMessages.ScrollIntoView(ChatEntries[^1]);
-
         await _client.SendChatAsync("Admin", text);
     }
 
@@ -292,9 +405,7 @@ public partial class MainWindow : Window
             {
                 StatusText.Text = $"Sending {Path.GetFileName(dialog.FileName)}...";
                 SetStatusColor("#f9e2af");
-
                 await transferService.SendFileAsync(stream, dialog.FileName, null);
-
                 StatusText.Text = "File sent successfully!";
                 SetStatusColor("#a6e3a1");
             }
@@ -416,9 +527,32 @@ public partial class MainWindow : Window
     }
 }
 
-// Helper types for UI bindings
+// ---- Helper types ----
+
 public record ChatEntry(string Sender, string Text);
+
 public record MonitorComboItem(int Index, string Label)
 {
     public override string ToString() => Label;
+}
+
+/// <summary>
+/// ViewModel wrapping TenantInfoMessage for the Tenants list in the UI.
+/// </summary>
+public class TenantViewModel
+{
+    public string TenantId { get; }
+    public string DisplayName { get; }
+    public string AdminEmail { get; }
+    public int OnlineNodeCount { get; }
+    public bool IsActive { get; }
+
+    public TenantViewModel(TenantInfoMessage msg)
+    {
+        TenantId = msg.TenantId;
+        DisplayName = msg.DisplayName;
+        AdminEmail = msg.AdminEmail;
+        OnlineNodeCount = msg.OnlineNodeCount;
+        IsActive = msg.IsActive;
+    }
 }

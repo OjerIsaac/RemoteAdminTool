@@ -31,8 +31,9 @@ public sealed class HostBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var relayUrl = _config["RelayUrl"] ?? "wss://localhost:5050/relay";
+        var relayUrl = _config["RelayUrl"] ?? "ws://localhost:5050/relay";
         var authToken = _config["HostToken"] ?? "host-secret-change-me";
+        var licenseKey = _config["LicenseKey"] ?? "";
         var machineName = _config["MachineName"] ?? Environment.MachineName;
         var machineId = _config["MachineId"];
 
@@ -47,7 +48,7 @@ public sealed class HostBackgroundService : BackgroundService
         _logger.LogInformation("Relay: {RelayUrl}", relayUrl);
 
         // Force unattended mode when running as a service (no interactive desktop)
-        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, unattendedMode: true);
+        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, licenseKey, unattendedMode: true);
 
         agent.ConnectionStateChanged += (_, status) =>
         {

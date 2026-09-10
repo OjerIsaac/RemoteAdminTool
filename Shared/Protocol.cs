@@ -39,7 +39,15 @@ public enum MessageType : byte
     FileTransferCancel = 44,    // either direction: cancel transfer
     ChatMessage = 50,           // either direction: text chat
     MonitorList = 60,           // Host -> Admin: list of available monitors
-    MonitorSelect = 61          // Admin -> Host: select which monitor to capture
+    MonitorSelect = 61,         // Admin -> Host: select which monitor to capture
+
+    // ---- Multi-tenant / super-admin messages ----
+    TenantList = 70,            // SuperAdmin -> Relay: request all tenants; Relay -> SuperAdmin: list of tenants
+    TenantInfo = 71,            // Relay -> SuperAdmin: info about a single tenant
+    CreateTenant = 72,          // SuperAdmin -> Relay: create a new sub-admin tenant
+    CreateTenantAck = 73,       // Relay -> SuperAdmin: tenant created / failed
+    SuspendTenant = 74,         // SuperAdmin -> Relay: suspend a tenant (no new host connections)
+    ResumeTenant = 75,          // SuperAdmin -> Relay: re-activate a suspended tenant
 }
 
 public readonly record struct FrameHeader(
@@ -84,12 +92,17 @@ public readonly record struct HelloAckMessage(
 
 // ---- Relay model messages ----
 
+/// <summary>
+/// Sent by a Host agent when it connects to the relay.
+/// LicenseKey identifies which sub-admin tenant this host belongs to.
+/// </summary>
 public readonly record struct HostRegisterMessage(
     string MachineId,
     string MachineName,
     string OsVersion,
     string HostVersion,
-    string AuthToken
+    string AuthToken,
+    string LicenseKey    // tenant identifier baked into the Host installer
 );
 
 public readonly record struct HostRegisterAckMessage(
@@ -102,7 +115,8 @@ public readonly record struct HostInfoMessage(
     string MachineName,
     string OsVersion,
     bool IsOnline,
-    DateTime LastSeen
+    DateTime LastSeen,
+    string TenantId     // included so super admin can see which tenant owns the host
 );
 
 public readonly record struct HostListMessage(
@@ -124,13 +138,23 @@ public readonly record struct DisconnectFromHostMessage(string MachineId);
 
 public readonly record struct HostOfflineMessage(string MachineId, string MachineName);
 
-public readonly record struct HostOnlineMessage(string MachineId, string MachineName);
+public readonly record struct HostOnlineMessage(string MachineId, string MachineName, string TenantId);
 
-public readonly record struct AdminAuthMessage(string AuthToken);
+/// <summary>
+/// Sent by a viewer (sub-admin or super admin) to authenticate with the relay.
+/// - Sub-admins: set LicenseKey to their tenant's license key, IsSuperAdmin = false.
+/// - Super admin: set IsSuperAdmin = true, LicenseKey can be empty/null.
+/// </summary>
+public readonly record struct AdminAuthMessage(
+    string AuthToken,
+    string? LicenseKey,
+    bool IsSuperAdmin
+);
 
 public readonly record struct AdminAuthAckMessage(
     bool Accepted,
-    string? RejectReason
+    string? RejectReason,
+    bool IsSuperAdmin       // echoed back so the viewer UI knows which mode to show
 );
 
 // ---- File transfer messages ----
@@ -184,3 +208,42 @@ public readonly record struct MonitorInfoData(
 );
 
 public readonly record struct MonitorSelectMessage(int MonitorIndex);
+
+// ---- Multi-tenant messages ----
+
+/// <summary>
+/// A lightweight summary of one sub-admin tenant, sent in the tenant list to the super admin.
+/// </summary>
+public readonly record struct TenantInfoMessage(
+    string TenantId,
+    string DisplayName,
+    string AdminEmail,
+    int OnlineNodeCount,
+    int TotalNodeCount,
+    bool IsActive,
+    DateTime CreatedAt
+);
+
+public readonly record struct TenantListMessage(
+    TenantInfoMessage[] Tenants
+);
+
+/// <summary>
+/// Super admin sends this to create a new sub-admin tenant.
+/// The relay generates a LicenseKey and AdminToken, returns them in CreateTenantAck.
+/// </summary>
+public readonly record struct CreateTenantMessage(
+    string DisplayName,
+    string AdminEmail
+);
+
+public readonly record struct CreateTenantAckMessage(
+    bool Success,
+    string? Error,
+    string? TenantId,
+    string? LicenseKey,     // embed this into the Host installer for this sub-admin
+    string? AdminToken      // sub-admin uses this to log into the Viewer
+);
+
+public readonly record struct SuspendTenantMessage(string TenantId);
+public readonly record struct ResumeTenantMessage(string TenantId);

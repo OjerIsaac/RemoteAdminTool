@@ -53,8 +53,9 @@ try
             .AddEnvironmentVariables(prefix: "RAT_")
             .Build();
 
-        var relayUrl = config["RelayUrl"] ?? "wss://localhost:5050/relay";
+        var relayUrl = config["RelayUrl"] ?? "ws://localhost:5050/relay";
         var authToken = config["HostToken"] ?? "host-secret-change-me";
+        var licenseKey = config["LicenseKey"] ?? "";
         var machineName = config["MachineName"] ?? Environment.MachineName;
         var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
 
@@ -65,8 +66,13 @@ try
             Log.Warning("Generated new Machine ID: {MachineId}. Add to appsettings.json for persistence.", machineId);
         }
 
+        if (string.IsNullOrEmpty(licenseKey) || licenseKey == "REPLACE_WITH_TENANT_LICENSE_KEY")
+        {
+            Log.Warning("LicenseKey is not set in appsettings.json. Host will be rejected by the relay.");
+        }
+
         var trayContext = new TrayApplicationContext();
-        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, unattendedMode);
+        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, licenseKey, unattendedMode);
 
         agent.SessionStateChanged += (_, isConnected) =>
         {

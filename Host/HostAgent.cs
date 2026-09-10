@@ -18,6 +18,7 @@ public sealed class HostAgent
     private readonly string _machineId;
     private readonly string _machineName;
     private readonly string _authToken;
+    private readonly string _licenseKey;
     private readonly bool _unattendedMode;
     private readonly IScreenCapture _capture = ScreenCaptureFactory.Create();
     private readonly InputInjector _input = new();
@@ -28,12 +29,14 @@ public sealed class HostAgent
     public event EventHandler<bool>? SessionStateChanged;
     public event EventHandler<string>? ConnectionStateChanged;
 
-    public HostAgent(string relayUrl, string machineId, string machineName, string authToken, bool unattendedMode = false)
+    public HostAgent(string relayUrl, string machineId, string machineName,
+        string authToken, string licenseKey, bool unattendedMode = false)
     {
         _relayUrl = relayUrl;
         _machineId = machineId;
         _machineName = machineName;
         _authToken = authToken;
+        _licenseKey = licenseKey;
         _unattendedMode = unattendedMode;
     }
 
@@ -84,7 +87,8 @@ public sealed class HostAgent
             _machineName,
             Environment.OSVersion.VersionString,
             "1.0.0",
-            _authToken
+            _authToken,
+            _licenseKey
         );
         await MessageFraming.WriteFrameAsync(_stream, MessageType.HostRegister,
             JsonSerializer.SerializeToUtf8Bytes(register), ct);

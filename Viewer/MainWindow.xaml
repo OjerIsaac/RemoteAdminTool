@@ -33,11 +33,35 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <!-- Tab button style -->
+        <Style x:Key="TabButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#6c7086"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280"/>
+            <ColumnDefinition Width="300"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition x:Name="ChatColumn" Width="0"/>
         </Grid.ColumnDefinitions>
@@ -60,6 +84,13 @@
                                  Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
                                  Padding="8,6" FontSize="12"/>
 
+                    <!-- License Key: hidden for super admin, shown for sub-admins -->
+                    <TextBlock x:Name="LicenseKeyLabel" Text="License Key (Sub-Admin)" Foreground="#a6adc8"
+                               FontSize="11" Margin="0,8,0,4"/>
+                    <TextBox x:Name="LicenseKeyBox"
+                             Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
+                             Padding="8,6" FontSize="12"/>
+
                     <Button x:Name="ConnectButton" Content="Connect to Relay"
                             Click="ConnectButton_Click"
                             Style="{StaticResource SidebarButton}"
@@ -73,36 +104,117 @@
 
                 <Border DockPanel.Dock="Top" Height="1" Background="#313244" Margin="12,4"/>
 
-                <!-- Node list header -->
-                <DockPanel DockPanel.Dock="Top" Margin="12,8,12,4">
-                    <TextBlock Text="Online Nodes" FontSize="14" FontWeight="SemiBold"
-                               Foreground="#a6e3a1" VerticalAlignment="Center"/>
-                    <Button x:Name="RefreshButton" Content="↻" Click="RefreshButton_Click"
-                            HorizontalAlignment="Right" FontSize="16"
-                            Style="{StaticResource SidebarButton}"
-                            Padding="6,2" Margin="0"/>
+                <!-- Tab bar: Nodes | Tenants (tenants only visible for super admin) -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,4,0">
+                    <Button x:Name="TabNodesButton" Content="Nodes"
+                            Style="{StaticResource TabButton}"
+                            Click="TabNodesButton_Click"
+                            Foreground="#a6e3a1" BorderBrush="#a6e3a1"/>
+                    <Button x:Name="TabTenantsButton" Content="Tenants"
+                            Style="{StaticResource TabButton}"
+                            Click="TabTenantsButton_Click"
+                            Visibility="Collapsed"/>
+                </StackPanel>
+
+                <!-- ======= Nodes panel ======= -->
+                <DockPanel x:Name="NodePanel" DockPanel.Dock="Top" LastChildFill="True">
+                    <DockPanel DockPanel.Dock="Top" Margin="12,8,12,4">
+                        <TextBlock Text="Online Nodes" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#a6e3a1" VerticalAlignment="Center"/>
+                        <Button x:Name="RefreshButton" Content="↻" Click="RefreshButton_Click"
+                                HorizontalAlignment="Right" FontSize="16"
+                                Style="{StaticResource SidebarButton}"
+                                Padding="6,2" Margin="0"/>
+                    </DockPanel>
+
+                    <ListBox x:Name="NodeList" Background="Transparent" BorderThickness="0"
+                             Margin="8,0" SelectionChanged="NodeList_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#313244" CornerRadius="6" Padding="10,8" Margin="2">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding MachineName}" FontSize="13"
+                                                   FontWeight="SemiBold" Foreground="#cdd6f4"/>
+                                        <TextBlock FontSize="10" Foreground="#6c7086" Margin="0,2,0,0">
+                                            <Run Text="{Binding MachineId, Mode=OneWay}"/>
+                                            <Run Text=" • "/>
+                                            <Run Text="{Binding OsVersion, Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <!-- Show tenant label for super admin -->
+                                        <TextBlock x:Name="TenantLabel" FontSize="9" Foreground="#89b4fa"
+                                                   Margin="0,2,0,0" Visibility="Collapsed">
+                                            <Run Text="Tenant: "/>
+                                            <Run Text="{Binding TenantId, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </DockPanel>
 
-                <!-- Node list -->
-                <ListBox x:Name="NodeList" Background="Transparent" BorderThickness="0"
-                         Margin="8,0" SelectionChanged="NodeList_SelectionChanged"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Background="#313244" CornerRadius="6" Padding="10,8" Margin="2">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding MachineName}" FontSize="13"
-                                               FontWeight="SemiBold" Foreground="#cdd6f4"/>
-                                    <TextBlock FontSize="10" Foreground="#6c7086" Margin="0,2,0,0">
-                                        <Run Text="{Binding MachineId, Mode=OneWay}"/>
-                                        <Run Text=" • "/>
-                                        <Run Text="{Binding OsVersion, Mode=OneWay}"/>
-                                    </TextBlock>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <!-- ======= Tenants panel (super admin only) ======= -->
+                <DockPanel x:Name="TenantPanel" DockPanel.Dock="Top" Visibility="Collapsed" LastChildFill="True">
+                    <DockPanel DockPanel.Dock="Top" Margin="12,8,12,4">
+                        <TextBlock Text="Sub-Admins" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#cba6f7" VerticalAlignment="Center"/>
+                        <Button x:Name="CreateTenantButton" Content="+ New"
+                                Click="CreateTenantButton_Click"
+                                HorizontalAlignment="Right"
+                                Style="{StaticResource SidebarButton}"
+                                Background="#a6e3a1" Foreground="#1e1e2e" FontWeight="SemiBold"
+                                Padding="8,4" Margin="0" FontSize="11"/>
+                    </DockPanel>
+
+                    <ListBox x:Name="TenantList" Background="Transparent" BorderThickness="0"
+                             Margin="8,0" SelectionChanged="TenantList_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#313244" CornerRadius="6" Padding="10,8" Margin="2">
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center">
+                                            <Button x:Name="SuspendTenantBtn"
+                                                    Content="Suspend"
+                                                    Tag="{Binding TenantId}"
+                                                    Click="SuspendTenantButton_Click"
+                                                    Style="{StaticResource SidebarButton}"
+                                                    Background="#f38ba8" Foreground="#1e1e2e"
+                                                    Padding="6,2" Margin="0" FontSize="10"/>
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="13"
+                                                       FontWeight="SemiBold" Foreground="#cdd6f4"/>
+                                            <TextBlock FontSize="10" Foreground="#6c7086" Margin="0,2,0,0">
+                                                <Run Text="{Binding OnlineNodeCount, Mode=OneWay}"/>
+                                                <Run Text=" nodes online"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="10" Foreground="#a6adc8" Margin="0,1,0,0"
+                                                       Text="{Binding AdminEmail, Mode=OneWay}"/>
+                                            <TextBlock FontSize="9" Margin="0,2,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                <Setter Property="Foreground" Value="#a6e3a1"/>
+                                                                <Setter Property="Text" Value="Active"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                                <Setter Property="Foreground" Value="#f38ba8"/>
+                                                                <Setter Property="Text" Value="Suspended"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
             </DockPanel>
         </Border>
 

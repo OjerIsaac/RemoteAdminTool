@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.EntityFrameworkCore;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using Serilog;
 using RemoteAdminTool.RelayServer;
 
@@ -12,19 +14,23 @@ Log.Logger = new LoggerConfiguration()
         retainedFileCountLimit: 14)
     .CreateLogger();
 
-// ---- Configuration (appsettings.json → env vars → defaults) ----
+// ---- Configuration (appsettings.json -> env vars -> defaults) ----
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
 
-// Config is loaded automatically from appsettings.json by WebApplication.CreateBuilder
 var config = builder.Configuration;
 
-var adminToken = config["Auth:AdminToken"]
-    ?? Environment.GetEnvironmentVariable("RAT_ADMIN_TOKEN")
-    ?? "admin-secret-change-me";
+var superAdminToken = config["Auth:SuperAdminToken"]
+    ?? Environment.GetEnvironmentVariable("RAT_SUPER_ADMIN_TOKEN")
+    ?? "super-admin-change-me";
+
 var hostToken = config["Auth:HostToken"]
     ?? Environment.GetEnvironmentVariable("RAT_HOST_TOKEN")
     ?? "host-secret-change-me";
+
+// Make host token available as env var so ConnectionHub can read it
+Environment.SetEnvironmentVariable("Auth__HostToken", hostToken);
+
 var listenPort = int.TryParse(config["RelayServer:Port"] ?? Environment.GetEnvironmentVariable("RAT_PORT"), out var p)
     ? p : 5050;
 var useTlsStr = config["RelayServer:TLS"] ?? Environment.GetEnvironmentVariable("RAT_TLS");
@@ -34,7 +40,17 @@ var pfxPath = config["RelayServer:CertPath"]
 var pfxPassword = config["RelayServer:CertPassword"]
     ?? Environment.GetEnvironmentVariable("RAT_CERT_PASSWORD") ?? "dev-password";
 
-var hub = new ConnectionHub(adminToken, hostToken);
+// ---- MySQL / EF Core ----
+var connectionString = config.GetConnectionString("MySql")
+    ?? Environment.GetEnvironmentVariable("RAT_MYSQL_CONNECTION")
+    ?? "server=localhost;port=3306;database=remote_admin;user=root;password=;";
+
+builder.Services.AddDbContextFactory<RelayDbContext>(options =>
+    options.UseMySql(connectionString,
+        ServerVersion.AutoDetect(connectionString),
+        mySqlOptions => mySqlOptions.EnableRetryOnFailure(5)));
+
+builder.Services.AddSingleton<TenantStore>();
 
 // Configure Kestrel with TLS
 builder.WebHost.ConfigureKestrel(options =>
@@ -43,7 +59,6 @@ builder.WebHost.ConfigureKestrel(options =>
     {
         var cert = CertificateHelper.GetOrCreateCertificate(pfxPath, pfxPassword);
 
-        // Save dev cert for reuse across restarts
         var devCertPath = Path.Combine(AppContext.BaseDirectory, "dev-cert.pfx");
         if (string.IsNullOrEmpty(pfxPath) && !File.Exists(devCertPath))
         {
@@ -63,6 +78,12 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 var app = builder.Build();
+
+// ---- Initialize database + tenant store ----
+var tenantStore = app.Services.GetRequiredService<TenantStore>();
+await tenantStore.InitializeAsync();
+
+var hub = new ConnectionHub(superAdminToken, tenantStore);
 
 // Enable WebSocket support
 app.UseWebSockets(new WebSocketOptions
@@ -105,19 +126,20 @@ app.Map("/relay", async (HttpContext context) =>
 var scheme = useTls ? "wss" : "ws";
 var httpScheme = useTls ? "https" : "http";
 
-Console.WriteLine($"=== RemoteAdminTool Relay Server ===");
+Console.WriteLine("=== RemoteAdminTool Relay Server (Multi-Tenant) ===");
 Console.WriteLine($"TLS: {(useTls ? "ENABLED" : "DISABLED")}");
 Console.WriteLine($"Listening on {httpScheme}://0.0.0.0:{listenPort}");
 Console.WriteLine($"WebSocket endpoint: {scheme}://localhost:{listenPort}/relay");
 Console.WriteLine($"Health check: {httpScheme}://localhost:{listenPort}/");
 Console.WriteLine();
 Console.WriteLine("Environment variables:");
-Console.WriteLine("  RAT_ADMIN_TOKEN  — Admin auth token");
-Console.WriteLine("  RAT_HOST_TOKEN   — Host registration token");
-Console.WriteLine("  RAT_PORT         — Listen port (default: 5050)");
-Console.WriteLine("  RAT_TLS          — Set to 'false' to disable TLS");
-Console.WriteLine("  RAT_CERT_PATH    — Path to .pfx certificate file");
-Console.WriteLine("  RAT_CERT_PASSWORD — Certificate password");
+Console.WriteLine("  RAT_SUPER_ADMIN_TOKEN   — Super admin token (platform owner)");
+Console.WriteLine("  RAT_HOST_TOKEN          — Host registration token");
+Console.WriteLine("  RAT_PORT                — Listen port (default: 5050)");
+Console.WriteLine("  RAT_TLS                 — Set to 'false' to disable TLS");
+Console.WriteLine("  RAT_CERT_PATH           — Path to .pfx certificate file");
+Console.WriteLine("  RAT_CERT_PASSWORD       — Certificate password");
+Console.WriteLine("  RAT_MYSQL_CONNECTION    — MySQL connection string");
 Console.WriteLine();
 
 app.Run();

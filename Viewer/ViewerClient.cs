@@ -6,15 +6,19 @@ using RemoteAdminTool.Shared;
 namespace RemoteAdminTool.Viewer;
 
 /// <summary>
-/// Admin viewer client that connects to the relay server, authenticates as admin,
+/// Admin viewer client that connects to the relay server, authenticates as admin or super admin,
 /// receives the list of online hosts, and can start sessions with any of them.
-/// During a session, screen frames arrive from the relay and input events are sent to the relay.
+/// 
+/// Super admin (empty LicenseKey + matching super admin token): sees all tenants and all hosts.
+/// Sub-admin (LicenseKey set): sees only hosts in their tenant.
 /// </summary>
 public sealed class ViewerClient : IAsyncDisposable
 {
     private ClientWebSocket? _ws;
     private WebSocketStreamAdapter? _stream;
     private CancellationTokenSource? _cts;
+
+    public bool IsSuperAdmin { get; private set; }
 
     public event EventHandler<byte[]>? FrameReceived;
     public event EventHandler<HostInfoMessage[]>? HostListReceived;
@@ -25,43 +29,43 @@ public sealed class ViewerClient : IAsyncDisposable
     public event EventHandler<MonitorInfoData[]>? MonitorListReceived;
     public event EventHandler<ChatMessageData>? ChatReceived;
     public event EventHandler<string>? Disconnected;
+    public event EventHandler<TenantInfoMessage[]>? TenantListReceived;
+    public event EventHandler<CreateTenantAckMessage>? TenantCreated;
 
     /// <summary>
-    /// Connect to the relay server and authenticate as admin.
-    /// Returns true if authenticated successfully.
+    /// Connect to the relay server and authenticate.
+    /// - Sub-admins: pass their LicenseKey and AdminToken.
+    /// - Super admin: pass empty/null LicenseKey and the super admin token.
+    /// Returns (Accepted, RejectReason, IsSuperAdmin).
     /// </summary>
-    public async Task<(bool Accepted, string? RejectReason)> ConnectAsync(
-        string relayUrl, string adminToken, CancellationToken ct = default)
+    public async Task<(bool Accepted, string? RejectReason, bool IsSuperAdmin)> ConnectAsync(
+        string relayUrl, string adminToken, string? licenseKey = null, CancellationToken ct = default)
     {
         _ws = new ClientWebSocket();
         await _ws.ConnectAsync(new Uri(relayUrl), ct);
         _stream = new WebSocketStreamAdapter(_ws);
 
-        // Authenticate as admin
-        var auth = new AdminAuthMessage(adminToken);
+        var isSuperAdmin = string.IsNullOrEmpty(licenseKey);
+        var auth = new AdminAuthMessage(adminToken, licenseKey, isSuperAdmin);
         await MessageFraming.WriteFrameAsync(_stream, MessageType.AdminAuth,
             JsonSerializer.SerializeToUtf8Bytes(auth), ct);
 
-        // Wait for auth ack
         var (type, payload) = await MessageFraming.ReadFrameAsync(_stream, ct);
         if (type != MessageType.AdminAuthAck)
-        {
             throw new InvalidDataException("Expected AdminAuthAck from relay.");
-        }
 
         var ack = JsonSerializer.Deserialize<AdminAuthAckMessage>(payload);
         if (ack.Accepted)
         {
+            IsSuperAdmin = ack.IsSuperAdmin;
             _cts = new CancellationTokenSource();
             _ = ReceiveLoopAsync(_cts.Token);
         }
 
-        return (ack.Accepted, ack.RejectReason);
+        return (ack.Accepted, ack.RejectReason, ack.IsSuperAdmin);
     }
 
-    /// <summary>
-    /// Request the relay to start a session with a specific host.
-    /// </summary>
+    /// <summary>Request the relay to start a session with a specific host.</summary>
     public async Task ConnectToHostAsync(string machineId)
     {
         if (_stream is null) return;
@@ -70,9 +74,7 @@ public sealed class ViewerClient : IAsyncDisposable
             JsonSerializer.SerializeToUtf8Bytes(msg));
     }
 
-    /// <summary>
-    /// Tell the relay to end the current session.
-    /// </summary>
+    /// <summary>Tell the relay to end the current session.</summary>
     public async Task DisconnectFromHostAsync(string machineId)
     {
         if (_stream is null) return;
@@ -81,14 +83,47 @@ public sealed class ViewerClient : IAsyncDisposable
             JsonSerializer.SerializeToUtf8Bytes(msg));
     }
 
-    /// <summary>
-    /// Request an updated host list from the relay.
-    /// </summary>
+    /// <summary>Request an updated host list from the relay.</summary>
     public async Task RequestHostListAsync()
     {
         if (_stream is null) return;
         await MessageFraming.WriteFrameAsync(_stream, MessageType.RequestHostList,
             Array.Empty<byte>());
+    }
+
+    // ---- Super admin commands ----
+
+    /// <summary>Request the list of all tenants. Only works when IsSuperAdmin = true.</summary>
+    public async Task RequestTenantListAsync()
+    {
+        if (_stream is null || !IsSuperAdmin) return;
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.TenantList,
+            Array.Empty<byte>());
+    }
+
+    /// <summary>Create a new sub-admin tenant. Only works when IsSuperAdmin = true.</summary>
+    public async Task CreateTenantAsync(string displayName, string adminEmail)
+    {
+        if (_stream is null || !IsSuperAdmin) return;
+        var msg = new CreateTenantMessage(displayName, adminEmail);
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.CreateTenant,
+            JsonSerializer.SerializeToUtf8Bytes(msg));
+    }
+
+    /// <summary>Suspend a tenant (their hosts will be rejected). Super admin only.</summary>
+    public async Task SuspendTenantAsync(string tenantId)
+    {
+        if (_stream is null || !IsSuperAdmin) return;
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.SuspendTenant,
+            JsonSerializer.SerializeToUtf8Bytes(new SuspendTenantMessage(tenantId)));
+    }
+
+    /// <summary>Re-activate a suspended tenant. Super admin only.</summary>
+    public async Task ResumeTenantAsync(string tenantId)
+    {
+        if (_stream is null || !IsSuperAdmin) return;
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.ResumeTenant,
+            JsonSerializer.SerializeToUtf8Bytes(new ResumeTenantMessage(tenantId)));
     }
 
     private async Task ReceiveLoopAsync(CancellationToken ct)
@@ -146,6 +181,17 @@ public sealed class ViewerClient : IAsyncDisposable
 
                     case MessageType.Heartbeat:
                         break;
+
+                    // ---- Super admin tenant messages ----
+                    case MessageType.TenantList:
+                        var tenantList = JsonSerializer.Deserialize<TenantListMessage>(payload);
+                        TenantListReceived?.Invoke(this, tenantList.Tenants);
+                        break;
+
+                    case MessageType.CreateTenantAck:
+                        var tenantAck = JsonSerializer.Deserialize<CreateTenantAckMessage>(payload);
+                        TenantCreated?.Invoke(this, tenantAck);
+                        break;
                 }
             }
         }
@@ -155,7 +201,7 @@ public sealed class ViewerClient : IAsyncDisposable
         }
     }
 
-    // ---- Input forwarding (sent to relay, which forwards to host) ----
+    // ---- Input forwarding ----
 
     public Task SendMouseMoveAsync(int x, int y) =>
         SendAsync(MessageType.MouseMove, new MouseMoveMessage(x, y));
