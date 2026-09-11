@@ -13,4 +13,5 @@ echo Building Host EXE with key: %LICKEY:~0,8%...
 echo.
 powershell -ExecutionPolicy Bypass -File "build.ps1" -PublishHostForTenant "%LICKEY%"
 echo.
-pause
+echo When done, grab: Host\dist\Host.exe
+echo.

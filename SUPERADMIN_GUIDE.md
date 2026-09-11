@@ -1,4 +1,4 @@
-﻿# RemoteAdminTool — Super Admin Operations Guide
+# RemoteAdminTool — Super Admin Operations Guide
 
 This guide tells you exactly what to do, step by step, with no coding required.
 Keep it open whenever you are operating the software.
@@ -69,7 +69,7 @@ Send the sub-admin **three things**:
 
 | What | Where to find it | Purpose |
 |------|-----------------|---------|
-| **Host.exe** | `dist\Host-xxx\` folder | They distribute this to every PC they want to control |
+| **Host.exe** | `Host\dist\` folder | They distribute this to every PC they want to control |
 | **Admin Token** | From the credentials dialog (Step 2) | They paste this into RemoteAdmin.exe to log in |
 | **RemoteAdmin.exe** | Your own copy | Same app you use — works for sub-admins too |
 

@@ -10,7 +10,8 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
-dist/
+Host/dist/
+Viewer/dist/
 
 ## Visual Studio
 .vs/

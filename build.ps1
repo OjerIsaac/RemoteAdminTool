@@ -106,13 +106,13 @@ Write-Host "  Build succeeded." -ForegroundColor Green
 if ($PublishViewer -or $PublishAll) {
     Write-Host ""
     Write-Host "Publishing Viewer (Super Admin EXE)..." -ForegroundColor Yellow
-    $distViewer = Join-Path $root "dist\Viewer"
+    $distViewer = Join-Path $root "Viewer\dist"
     & dotnet publish "$root\Viewer\Viewer.csproj" -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
         -o $distViewer 2>&1 | Where-Object { $_ -match "error|warning|published" }
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "  ✅ Viewer EXE → $distViewer\Viewer.exe" -ForegroundColor Green
-        Write-Host "     This is YOUR super admin app. Put it on your desktop." -ForegroundColor DarkGray
+        Get-ChildItem $distViewer -Exclude "Viewer.exe" | Remove-Item -Force
+        Write-Host "  Viewer EXE -> $distViewer\Viewer.exe" -ForegroundColor Green
     }
 }
 
@@ -120,7 +120,7 @@ if ($PublishViewer -or $PublishAll) {
 if ($PublishHostForTenant) {
     Write-Host ""
     Write-Host "Publishing Host EXE for sub-admin (LicenseKey=$($PublishHostForTenant.Substring(0,6))...)..." -ForegroundColor Yellow
-    $distHost = Join-Path $root "dist\Host-$($PublishHostForTenant.Substring(0,8))"
+    $distHost = Join-Path $root "Host\dist"
     & dotnet publish "$root\Host\Host.csproj" -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
         -o $distHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
@@ -129,7 +129,6 @@ if ($PublishHostForTenant) {
         Get-ChildItem $distHost -Exclude "Host.exe" | Remove-Item -Force
         Write-Host "  Host EXE -> $distHost\Host.exe" -ForegroundColor Green
         Write-Host "     Single EXE. Send ONLY Host.exe to the sub-admin." -ForegroundColor DarkGray
-        Write-Host "     Sub-admin shares Host.exe with their users." -ForegroundColor DarkGray
     }
 }
 
