@@ -74,10 +74,13 @@
                     <TextBlock Text="Remote Admin" FontSize="18" FontWeight="Bold"
                                Foreground="#cba6f7" Margin="0,0,0,12"/>
 
-                    <TextBlock Text="Relay Server" Foreground="#a6adc8" FontSize="11" Margin="0,0,0,4"/>
-                    <TextBox x:Name="RelayUrlBox" Text="ws://localhost:5050/relay"
+                    <!-- Relay URL loaded from appsettings.json — hidden from UI -->
+                    <TextBlock Text="Relay Server" Foreground="#a6adc8" FontSize="11" Margin="0,0,0,4"
+                               Visibility="Collapsed"/>
+                    <TextBox x:Name="RelayUrlBox" Text="wss://remoteadmintool.onrender.com/relay"
                              Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
-                             Padding="8,6" FontSize="12"/>
+                             Padding="8,6" FontSize="12"
+                             Visibility="Collapsed"/>
 
                     <TextBlock Text="Admin Token" Foreground="#a6adc8" FontSize="11" Margin="0,8,0,4"/>
                     <PasswordBox x:Name="AdminTokenBox"

@@ -27,6 +27,9 @@ public partial class MainWindow : Window
         NodeList.ItemsSource = Nodes;
         ChatMessages.ItemsSource = ChatEntries;
         TenantList.ItemsSource = Tenants;
+
+        // RelayUrl is a compiled constant — set by build.ps1 from .env
+        RelayUrlBox.Text = ViewerConstants.RelayUrl;
     }
 
     // ---- Connection to Relay ----
