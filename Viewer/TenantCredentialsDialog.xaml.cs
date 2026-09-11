@@ -42,7 +42,8 @@ public partial class TenantCredentialsDialog : Window
         _tenantId = tenantId;
         _licenseKey = licenseKey;
         _adminToken = adminToken;
-        _buildCommand = $@".\build.ps1 -PublishHostForTenant {licenseKey}";
+        // The 'command' is actually just the license key — user pastes it into BuildHostForSubAdmin.bat
+        _buildCommand = licenseKey;
 
         TenantIdBox.Text = tenantId;
         LicenseKeyBox.Text = licenseKey;
