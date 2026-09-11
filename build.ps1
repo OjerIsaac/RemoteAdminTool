@@ -125,11 +125,11 @@ if ($PublishHostForTenant) {
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
         -o $distHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
     if ($LASTEXITCODE -eq 0) {
-        # Also copy the appsettings template (only has MachineName/UnattendedMode — no secrets)
-        Copy-Item "$root\Host\appsettings.json" "$distHost\appsettings.json" -Force
-        Write-Host "  ✅ Host EXE → $distHost\Host.exe" -ForegroundColor Green
-        Write-Host "     Send this folder to the sub-admin. They share Host.exe with their users." -ForegroundColor DarkGray
-        Write-Host "     Each user's machine gets its own MachineId on first run." -ForegroundColor DarkGray
+        # Remove PDB debug symbols and appsettings — end users only need Host.exe
+        Get-ChildItem $distHost -Exclude "Host.exe" | Remove-Item -Force
+        Write-Host "  Host EXE -> $distHost\Host.exe" -ForegroundColor Green
+        Write-Host "     Single EXE. Send ONLY Host.exe to the sub-admin." -ForegroundColor DarkGray
+        Write-Host "     Sub-admin shares Host.exe with their users." -ForegroundColor DarkGray
     }
 }
 
