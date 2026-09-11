@@ -90,6 +90,13 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 builder.Services.AddSingleton<TenantStore>();
 
+// ---- Keep-alive: self-ping every 2 min to prevent Render free tier sleep ----
+builder.Services.AddHttpClient("keepalive", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+});
+builder.Services.AddHostedService<KeepAliveService>();
+
 // Configure Kestrel with TLS
 builder.WebHost.ConfigureKestrel(options =>
 {
