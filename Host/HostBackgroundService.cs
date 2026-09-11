@@ -31,11 +31,12 @@ public sealed class HostBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var relayUrl = _config["RelayUrl"] ?? "ws://localhost:5050/relay";
-        var authToken = _config["HostToken"] ?? "host-secret-change-me";
-        var licenseKey = _config["LicenseKey"] ?? "";
+        // RelayUrl and HostToken are compiled constants — not in appsettings.json
+        var relayUrl  = HostConstants.RelayUrl;
+        var authToken = HostConstants.HostToken;
+        var licenseKey  = _config["LicenseKey"] ?? "";
         var machineName = _config["MachineName"] ?? Environment.MachineName;
-        var machineId = _config["MachineId"];
+        var machineId   = _config["MachineId"];
 
         if (string.IsNullOrEmpty(machineId))
         {

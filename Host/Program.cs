@@ -33,8 +33,8 @@ try
 
         builder.Configuration
             .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddEnvironmentVariables(prefix: "RAT_");
+            .AddJsonFile("appsettings.json", optional: true);
+        // Note: RelayUrl and HostToken are compiled constants in HostConstants.cs
 
         builder.Services.AddHostedService<HostBackgroundService>();
         builder.Services.AddSerilog();
@@ -50,12 +50,12 @@ try
         var config = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-            .AddEnvironmentVariables(prefix: "RAT_")
             .Build();
 
-        var relayUrl = config["RelayUrl"] ?? "ws://localhost:5050/relay";
-        var authToken = config["HostToken"] ?? "host-secret-change-me";
-        var licenseKey = config["LicenseKey"] ?? "";
+        // RelayUrl and HostToken come from compiled constants — not readable as plain text
+        var relayUrl    = HostConstants.RelayUrl;
+        var authToken   = HostConstants.HostToken;
+        var licenseKey  = config["LicenseKey"] ?? "";
         var machineName = config["MachineName"] ?? Environment.MachineName;
         var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
 
@@ -66,7 +66,7 @@ try
             Log.Warning("Generated new Machine ID: {MachineId}. Add to appsettings.json for persistence.", machineId);
         }
 
-        if (string.IsNullOrEmpty(licenseKey) || licenseKey == "REPLACE_WITH_TENANT_LICENSE_KEY")
+        if (string.IsNullOrEmpty(licenseKey))
         {
             Log.Warning("LicenseKey is not set in appsettings.json. Host will be rejected by the relay.");
         }

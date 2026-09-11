@@ -4,7 +4,7 @@ namespace RemoteAdminTool.RelayServer;
 
 /// <summary>
 /// EF Core entity representing one sub-admin tenant.
-/// Stored in the MySQL database on the relay server.
+/// Stored in the PostgreSQL database on the relay server.
 /// </summary>
 public sealed class Tenant
 {
@@ -37,4 +37,13 @@ public sealed class Tenant
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Maximum number of distinct machines (MachineIds) allowed to register
+    /// under this tenant. 0 = unlimited (default until billing is set up).
+    /// </summary>
+    public int MaxHosts { get; set; } = 0;
+
+    /// <summary>Known/approved machines for this tenant (tracked in DB).</summary>
+    public ICollection<RegisteredHost> KnownHosts { get; set; } = new List<RegisteredHost>();
 }

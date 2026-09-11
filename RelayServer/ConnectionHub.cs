@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using RemoteAdminTool.Shared;
 
 namespace RemoteAdminTool.RelayServer;
@@ -20,6 +21,7 @@ public sealed class ConnectionHub
 {
     private readonly string _superAdminToken;
     private readonly TenantStore _tenantStore;
+    private readonly IDbContextFactory<RelayDbContext> _dbFactory;
 
     // tenant-scoped host registry: tenantId -> (machineId -> ConnectedHost)
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, ConnectedHost>> _tenantHosts = new();
@@ -34,10 +36,12 @@ public sealed class ConnectionHub
 
     private readonly object _notifyLock = new();
 
-    public ConnectionHub(string superAdminToken, TenantStore tenantStore)
+    public ConnectionHub(string superAdminToken, TenantStore tenantStore,
+        IDbContextFactory<RelayDbContext> dbFactory)
     {
         _superAdminToken = superAdminToken;
         _tenantStore = tenantStore;
+        _dbFactory = dbFactory;
     }
 
     /// <summary>
@@ -97,6 +101,63 @@ public sealed class ConnectionHub
             return;
         }
 
+        // 3. Seat limit + MachineId tracking
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
+        var knownHost = await db.RegisteredHosts
+            .FirstOrDefaultAsync(h => h.TenantId == tenant.TenantId
+                                   && h.MachineId == register.MachineId, ct);
+
+        if (knownHost is null)
+        {
+            // New machine — check seat limit before allowing it
+            if (tenant.MaxHosts > 0)
+            {
+                var currentCount = await db.RegisteredHosts
+                    .CountAsync(h => h.TenantId == tenant.TenantId && h.IsAllowed, ct);
+
+                if (currentCount >= tenant.MaxHosts)
+                {
+                    var reject = new HostRegisterAckMessage(false,
+                        $"Seat limit reached ({tenant.MaxHosts} hosts). Contact your admin.");
+                    await MessageFraming.WriteFrameAsync(stream, MessageType.HostRegisterAck,
+                        JsonSerializer.SerializeToUtf8Bytes(reject), ct);
+                    await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Seat limit reached", ct);
+                    return;
+                }
+            }
+
+            // Register new machine in DB
+            db.RegisteredHosts.Add(new RegisteredHost
+            {
+                TenantId   = tenant.TenantId,
+                MachineId  = register.MachineId,
+                MachineName = register.MachineName,
+                FirstSeenAt = DateTime.UtcNow,
+                LastSeenAt  = DateTime.UtcNow,
+                IsAllowed   = true
+            });
+            await db.SaveChangesAsync(ct);
+            Console.WriteLine($"[Hub] New machine registered: {register.MachineName} ({register.MachineId}) | Tenant: {tenant.DisplayName}");
+        }
+        else
+        {
+            // Known machine — check if it's been banned
+            if (!knownHost.IsAllowed)
+            {
+                var reject = new HostRegisterAckMessage(false, "This machine has been blocked by the admin.");
+                await MessageFraming.WriteFrameAsync(stream, MessageType.HostRegisterAck,
+                    JsonSerializer.SerializeToUtf8Bytes(reject), ct);
+                await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Machine blocked", ct);
+                return;
+            }
+
+            // Update last seen
+            knownHost.LastSeenAt  = DateTime.UtcNow;
+            knownHost.MachineName = register.MachineName; // name may change if user renamed PC
+            await db.SaveChangesAsync(ct);
+        }
+
         var host = new ConnectedHost
         {
             MachineId = register.MachineId,
@@ -111,7 +172,7 @@ public sealed class ConnectionHub
         var tenantHosts = _tenantHosts.GetOrAdd(tenant.TenantId, _ => new ConcurrentDictionary<string, ConnectedHost>());
         tenantHosts[register.MachineId] = host;
 
-        Console.WriteLine($"[Hub] Host registered: {register.MachineName} ({register.MachineId}) | Tenant: {tenant.DisplayName}");
+        Console.WriteLine($"[Hub] Host connected: {register.MachineName} ({register.MachineId}) | Tenant: {tenant.DisplayName}");
 
         // Ack
         var ack = new HostRegisterAckMessage(true, null);

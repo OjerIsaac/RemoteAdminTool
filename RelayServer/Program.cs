@@ -1,8 +1,14 @@
+using DotNetEnv;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using RemoteAdminTool.RelayServer;
+
+// ---- Load .env file for local development ----
+// On Render, env vars are set in the dashboard and take priority.
+// Env.TraversePath() walks up from the binary to find .env at solution root.
+Env.TraversePath().Load();
 
 // ---- Serilog structured logging ----
 Log.Logger = new LoggerConfiguration()
@@ -14,43 +20,44 @@ Log.Logger = new LoggerConfiguration()
         retainedFileCountLimit: 14)
     .CreateLogger();
 
-// ---- Configuration (appsettings.json -> env vars -> defaults) ----
+// ---- Configuration ----
+// ASP.NET Core merges (in priority order):
+//   1. Environment variables (Render dashboard / .env loaded above)
+//   2. appsettings.json (placeholder values only — safe to commit)
+// Env var naming: double-underscore maps to nested JSON keys
+//   e.g. Auth__SuperAdminToken  →  config["Auth:SuperAdminToken"]
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
 
 var config = builder.Configuration;
 
 var superAdminToken = config["Auth:SuperAdminToken"]
-    ?? Environment.GetEnvironmentVariable("RAT_SUPER_ADMIN_TOKEN")
-    ?? "super-admin-change-me";
+    ?? throw new InvalidOperationException("Auth__SuperAdminToken is not set. Add it to .env or Render env vars.");
 
 var hostToken = config["Auth:HostToken"]
-    ?? Environment.GetEnvironmentVariable("RAT_HOST_TOKEN")
-    ?? "host-secret-change-me";
+    ?? throw new InvalidOperationException("Auth__HostToken is not set. Add it to .env or Render env vars.");
 
-// Make host token available as env var so ConnectionHub can read it
+// Make host token available so ConnectionHub can read it
 Environment.SetEnvironmentVariable("Auth__HostToken", hostToken);
 
 var listenPort = int.TryParse(
     config["RelayServer:Port"]
-    ?? Environment.GetEnvironmentVariable("RAT_PORT")
-    ?? Environment.GetEnvironmentVariable("PORT"),   // Render injects PORT automatically
+    ?? Environment.GetEnvironmentVariable("PORT"),  // Render injects PORT automatically
     out var p) ? p : 5050;
-var useTlsStr = config["RelayServer:TLS"] ?? Environment.GetEnvironmentVariable("RAT_TLS");
-var useTls = useTlsStr != "false" && useTlsStr != "False";
-var pfxPath = config["RelayServer:CertPath"]
-    ?? Environment.GetEnvironmentVariable("RAT_CERT_PATH") ?? "";
-var pfxPassword = config["RelayServer:CertPassword"]
-    ?? Environment.GetEnvironmentVariable("RAT_CERT_PASSWORD") ?? "dev-password";
+
+var useTls = config["RelayServer:TLS"] is not ("false" or "False");
+var pfxPath = config["RelayServer:CertPath"] ?? "";
+var pfxPassword = config["RelayServer:CertPassword"] ?? "dev-password";
 
 // ---- PostgreSQL / EF Core ----
-// Render injects DATABASE_URL in URI format: postgres://user:pass@host:port/db
-// Npgsql requires key-value format: Host=...;Username=...;Password=...
-// The helper below converts between the two formats.
+// Render injects DATABASE_URL as a URI: postgres://user:pass@host:port/db
+// Our .env uses ConnectionStrings__Postgres (same URI format via the key above)
+// The helper converts either format to Npgsql key-value format.
 static string BuildNpgsqlConnectionString(string raw)
 {
     if (!raw.StartsWith("postgres://") && !raw.StartsWith("postgresql://"))
-        return raw; // already in key-value format (local dev)
+        return raw; // already key-value format
 
     var uri = new Uri(raw.Replace("postgres://", "postgresql://"));
     var userInfo = uri.UserInfo.Split(':', 2);
@@ -58,15 +65,13 @@ static string BuildNpgsqlConnectionString(string raw)
     var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
     var database = uri.AbsolutePath.TrimStart('/');
     var port = uri.Port > 0 ? uri.Port : 5432;
-
-    // SSL Mode=Prefer works for both Render internal URLs (no SSL needed)
-    // and external URLs (SSL available). Avoids crash on internal network.
     return $"Host={uri.Host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Prefer;Trust Server Certificate=true;";
 }
 
+// DATABASE_URL (Render) takes priority over ConnectionStrings:Postgres (.env / appsettings)
 var rawDbUrl = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? config.GetConnectionString("Postgres")
-    ?? "Host=localhost;Port=5432;Database=remote_admin;Username=postgres;Password=;";
+    ?? throw new InvalidOperationException("No database connection string found. Set ConnectionStrings__Postgres in .env or DATABASE_URL on Render.");
 
 var connectionString = BuildNpgsqlConnectionString(rawDbUrl);
 
@@ -119,7 +124,8 @@ app.UseForwardedHeaders();
 var tenantStore = app.Services.GetRequiredService<TenantStore>();
 await tenantStore.InitializeAsync();
 
-var hub = new ConnectionHub(superAdminToken, tenantStore);
+var hub = new ConnectionHub(superAdminToken, tenantStore,
+    app.Services.GetRequiredService<IDbContextFactory<RelayDbContext>>());
 
 // Enable WebSocket support
 app.UseWebSockets(new WebSocketOptions
