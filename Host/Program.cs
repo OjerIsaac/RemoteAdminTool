@@ -4,10 +4,9 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using RemoteAdminTool.Host;
 
-// ---- Serilog structured logging ----
+// ---- Serilog structured logging (file only — no console window in WinExe) ----
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
-    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
     .WriteTo.File(
         Path.Combine(AppContext.BaseDirectory, "logs", "host-.log"),
         rollingInterval: RollingInterval.Day,

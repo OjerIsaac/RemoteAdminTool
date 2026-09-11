@@ -93,9 +93,13 @@ public partial class MainWindow : Window
 
             StatusText.Text = isSuperAdmin ? "Connected (Super Admin)" : "Connected (Sub-Admin)";
             SetStatusColor("#a6e3a1");
-            ConnectButton.Content = "Disconnect from Relay";
+            ConnectButton.Content = "Connect to Relay";
 
-            // Show Tenants tab only for super admin
+            // Switch sidebar to logged-in state
+            LoginForm.Visibility = Visibility.Collapsed;
+            LoggedInBar.Visibility = Visibility.Visible;
+            LoggedInLabel.Text = isSuperAdmin ? "Super Admin" : "Sub-Admin";
+            LoggedInRole.Text = isSuperAdmin ? "Full access" : "Tenant access";
             if (isSuperAdmin)
             {
                 TabTenantsButton.Visibility = Visibility.Visible;
@@ -313,6 +317,9 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
+            // Restore login form
+            LoginForm.Visibility = Visibility.Visible;
+            LoggedInBar.Visibility = Visibility.Collapsed;
             StatusText.Text = $"Disconnected: {reason}";
             SetStatusColor("#f38ba8");
             ConnectButton.Content = "Connect to Relay";
@@ -322,6 +329,25 @@ public partial class MainWindow : Window
             EndSessionUI();
             _client = null;
         });
+    }
+
+    // ---- Logout ----
+
+    private async void LogoutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client is not null)
+        {
+            await _client.DisposeAsync();
+            _client = null;
+        }
+        LoginForm.Visibility = Visibility.Visible;
+        LoggedInBar.Visibility = Visibility.Collapsed;
+        StatusText.Text = "Not connected";
+        SetStatusColor("#f38ba8");
+        Nodes.Clear();
+        Tenants.Clear();
+        TabTenantsButton.Visibility = Visibility.Collapsed;
+        EndSessionUI();
     }
 
     // ---- Clipboard ----

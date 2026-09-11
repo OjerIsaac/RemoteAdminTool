@@ -69,25 +69,19 @@
         <!-- ======= Left Sidebar ======= -->
         <Border Grid.Column="0" Background="#181825" BorderBrush="#313244" BorderThickness="0,0,1,0">
             <DockPanel>
-                <!-- Connection bar -->
-                <StackPanel DockPanel.Dock="Top" Margin="12">
+                <!-- ── LOGIN FORM (shown when not connected) ── -->
+                <StackPanel x:Name="LoginForm" DockPanel.Dock="Top" Margin="12">
                     <TextBlock Text="Remote Admin" FontSize="18" FontWeight="Bold"
                                Foreground="#cba6f7" Margin="0,0,0,12"/>
 
-                    <!-- Relay URL loaded from appsettings.json — hidden from UI -->
-                    <TextBlock Text="Relay Server" Foreground="#a6adc8" FontSize="11" Margin="0,0,0,4"
-                               Visibility="Collapsed"/>
-                    <TextBox x:Name="RelayUrlBox" Text="wss://remoteadmintool.onrender.com/relay"
-                             Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
-                             Padding="8,6" FontSize="12"
-                             Visibility="Collapsed"/>
+                    <!-- Relay URL hidden — loaded from compiled constant -->
+                    <TextBox x:Name="RelayUrlBox" Visibility="Collapsed"/>
 
-                    <TextBlock Text="Admin Token" Foreground="#a6adc8" FontSize="11" Margin="0,8,0,4"/>
+                    <TextBlock Text="Admin Token" Foreground="#a6adc8" FontSize="11" Margin="0,0,0,4"/>
                     <PasswordBox x:Name="AdminTokenBox"
                                  Background="#313244" Foreground="#cdd6f4" BorderBrush="#45475a"
                                  Padding="8,6" FontSize="12"/>
 
-                    <!-- License Key: hidden for super admin, shown for sub-admins -->
                     <TextBlock x:Name="LicenseKeyLabel" Text="License Key (Sub-Admin)" Foreground="#a6adc8"
                                FontSize="11" Margin="0,8,0,4"/>
                     <TextBox x:Name="LicenseKeyBox"
@@ -97,13 +91,34 @@
                     <Button x:Name="ConnectButton" Content="Connect to Relay"
                             Click="ConnectButton_Click"
                             Style="{StaticResource SidebarButton}"
-                            Background="#7f849c" Foreground="#1e1e2e" FontWeight="SemiBold"
+                            Background="#89b4fa" Foreground="#1e1e2e" FontWeight="SemiBold"
                             Margin="0,10,0,0"/>
 
-                    <TextBlock x:Name="StatusText" Text="Disconnected"
+                    <TextBlock x:Name="StatusText" Text="Not connected"
                                Foreground="#f38ba8" FontSize="11" Margin="0,8,0,0"
                                TextWrapping="Wrap"/>
                 </StackPanel>
+
+                <!-- ── LOGGED-IN BAR (shown when connected) ── -->
+                <Border x:Name="LoggedInBar" DockPanel.Dock="Top" Visibility="Collapsed"
+                        Background="#1e1e2e" Margin="10,10,10,4"
+                        CornerRadius="8" Padding="10,8">
+                    <DockPanel>
+                        <Button x:Name="LogoutButton" Content="Logout"
+                                Click="LogoutButton_Click"
+                                DockPanel.Dock="Right"
+                                Background="#f38ba8" Foreground="#1e1e2e" FontWeight="SemiBold"
+                                FontSize="11" Padding="10,4" BorderThickness="0"
+                                Cursor="Hand"/>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="LoggedInLabel" Text="Connected"
+                                       Foreground="#a6e3a1" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="LoggedInRole" Text=""
+                                       Foreground="#6c7086" FontSize="10"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
 
                 <Border DockPanel.Dock="Top" Height="1" Background="#313244" Margin="12,4"/>
 
