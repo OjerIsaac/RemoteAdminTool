@@ -9,5 +9,5 @@ internal static class HostConstants
 {
     public const string RelayUrl   = "wss://remoteadmintool.onrender.com/relay";
     public const string HostToken  = "d6a6ac2563a8443ea686346c";
-    public const string LicenseKey = "replace-with-license-key";
+    public const string LicenseKey = "fbc6966260cf5a17f3b977032522dbe374463a369c13f4ca";
 }
