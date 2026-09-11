@@ -24,11 +24,17 @@ public sealed class TenantStore
 
     /// <summary>
     /// Load all tenants from the database into memory. Called once on startup.
+    /// Also applies any pending schema changes (idempotent ALTER/CREATE).
     /// </summary>
     public async Task InitializeAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        await db.Database.EnsureCreatedAsync();     // creates tables if they don't exist
+
+        // Create tables that don't exist yet (fresh install)
+        await db.Database.EnsureCreatedAsync();
+
+        // Apply incremental schema changes — safe to run multiple times
+        await ApplyMigrationsAsync(db);
 
         var tenants = await db.Tenants.ToListAsync();
         await _lock.WaitAsync();
@@ -42,6 +48,49 @@ public sealed class TenantStore
         }
 
         Console.WriteLine($"[TenantStore] Loaded {tenants.Count} tenant(s) from database.");
+    }
+
+    /// <summary>
+    /// Idempotent schema migrations — adds columns/tables introduced after the initial
+    /// schema was created. Safe to run on every startup; each statement is guarded by
+    /// an existence check so it's a no-op if already applied.
+    /// </summary>
+    private static async Task ApplyMigrationsAsync(RelayDbContext db)
+    {
+        var conn = db.Database.GetDbConnection();
+        await conn.OpenAsync();
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+
+            // v2: add MaxHosts column to Tenants (seat limit feature)
+            cmd.CommandText = """
+                ALTER TABLE "Tenants"
+                ADD COLUMN IF NOT EXISTS "MaxHosts" integer NOT NULL DEFAULT 0;
+                """;
+            await cmd.ExecuteNonQueryAsync();
+
+            // v2: create RegisteredHosts table (MachineId tracking + banning)
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS "RegisteredHosts" (
+                    "Id"          serial PRIMARY KEY,
+                    "TenantId"    varchar(64)  NOT NULL REFERENCES "Tenants"("TenantId") ON DELETE CASCADE,
+                    "MachineId"   varchar(64)  NOT NULL,
+                    "MachineName" varchar(256) NOT NULL DEFAULT '',
+                    "FirstSeenAt" timestamptz  NOT NULL DEFAULT now(),
+                    "LastSeenAt"  timestamptz  NOT NULL DEFAULT now(),
+                    "IsAllowed"   boolean      NOT NULL DEFAULT true,
+                    UNIQUE ("TenantId", "MachineId")
+                );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+
+            Console.WriteLine("[TenantStore] Schema migrations applied.");
+        }
+        finally
+        {
+            await conn.CloseAsync();
+        }
     }
 
     // ---- Lookup methods (hot path — no DB call) ----
