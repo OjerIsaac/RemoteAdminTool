@@ -1,176 +1,204 @@
-﻿# RemoteAdminTool — Super Admin Guide
+﻿# RemoteAdminTool — Super Admin Operations Guide
 
-## Overview: How This Software Works
-
-RemoteAdminTool is a 3-tier remote access platform hosted on Render.
-
-```
-YOUR RELAY SERVER (Render)
-        |
-        +--- Super Admin (you) ---- Viewer.exe --- full control, manage tenants
-        |
-        +--- Sub-Admin A --- Viewer.exe --- sees only their own hosts
-        |        +-- Host.exe (PC 1, PC 2, PC 3...)
-        |
-        +--- Sub-Admin B --- Viewer.exe --- sees only their own hosts
-                 +-- Host.exe (PC 1, PC 2...)
-```
-
-| Role | App | What They Can Do |
-|------|-----|-----------------|
-| Super Admin (you) | Viewer.exe + your super-admin token | See all sub-admins, create/suspend tenants |
-| Sub-Admin | Viewer.exe + their admin token | See only their own hosts, start remote sessions |
-| End User | Host.exe (pre-configured, no setup) | Sits in tray, allows sub-admin to connect |
+This guide tells you exactly what to do, step by step, with no coding or VS required.
+Keep it open whenever you are operating the software.
 
 ---
 
-## Your App — The Viewer (Super Admin)
+## What You Have
 
-Build and place on your desktop once:
+Three components, three audiences:
 
-```powershell
+| Component | Who uses it | What it does |
+|-----------|-------------|-------------|
+| **RemoteAdmin.exe** (the Viewer) | You (super admin) AND every sub-admin | The control panel — log in with your token to manage everything; sub-admins log in with their token to see their machines |
+| **Host.exe** | End users (the PCs being remotely controlled) | Runs silently in the system tray; lets the sub-admin connect |
+| **Relay Server** | Nobody touches this | Runs on Render 24/7; connects everything together |
+
+---
+
+## One-Time Setup (Already Done — For Reference)
+
+- Relay server is live at: https://remoteadmintool.onrender.com
+- Your super admin token is in the .env file (Auth__SuperAdminToken)
+- Your RemoteAdmin.exe is already on your Desktop
+
+---
+
+## Part 1: Your Daily App — RemoteAdmin.exe
+
+### Opening it
+
+Double-click **RemoteAdmin.exe** on your Desktop.
+
+### Logging in as Super Admin
+
+1. In the **Admin Token** field, type your super admin token (from .env → Auth__SuperAdminToken)
+2. Leave **License Key** completely empty
+3. Click **Connect to Relay**
+4. You are now connected. The **Tenants** tab appears at the top — sub-admins do NOT see this tab
+
+### What you can do once connected
+
+- **Nodes tab** — See every host machine from every sub-admin currently online
+- **Tenants tab** — Manage your sub-admins (create, view credentials, suspend, resume)
+- **Click any node** — Start a remote session with that machine
+
+---
+
+## Part 2: Adding a New Sub-Admin
+
+Do this whenever a new sub-admin joins your platform.
+
+### Step 1 — Create the tenant
+
+1. Open RemoteAdmin.exe and log in as super admin
+2. Click **Tenants** tab
+3. Click **+ New**
+4. Type the sub-admin's name and email → **Create Tenant**
+5. A credentials dialog appears. **Do not close it yet.**
+
+### Step 2 — Copy the License Key
+
+In the credentials dialog, click **Copy** next to **License Key**.
+Paste it somewhere temporary (Notepad).
+
+The dialog also shows the **Admin Token** — copy that too. You will give it to the sub-admin.
+
+### Step 3 — Build the Host EXE for this sub-admin
+
+Open a PowerShell window in your project folder:
+
+```
+Right-click the Start button → "Terminal" or "Windows PowerShell"
+Then type:
+cd C:\c#-projects\RemoteAdminTool
+.\build.ps1 -PublishHostForTenant PASTE_LICENSE_KEY_HERE
+```
+
+Example:
+```
+.\build.ps1 -PublishHostForTenant def456abc789...
+```
+
+This takes about 1 minute. When done it says:
+```
+Host EXE -> C:\c#-projects\RemoteAdminTool\dist\Host-def456\Host.exe
+```
+
+### Step 4 — What to send the sub-admin
+
+Send the sub-admin TWO things:
+
+1. **Host.exe** — from `C:\c#-projects\RemoteAdminTool\dist\Host-def456\`
+   They distribute this to every PC they want to control
+
+2. **Their Admin Token** — from the credentials dialog
+   They type this into RemoteAdmin.exe to log in
+
+3. **RemoteAdmin.exe** — your Viewer app (same one you use)
+   They use it to see and control their machines
+
+---
+
+## Part 3: What Sub-Admins Do
+
+Tell your sub-admin exactly this:
+
+### To log into the Viewer (RemoteAdmin.exe)
+
+1. Open RemoteAdmin.exe
+2. Paste your Admin Token in the **Admin Token** field
+3. Leave License Key empty
+4. Click **Connect to Relay**
+5. You will see your Nodes tab with all your machines
+
+### To install the Host on a PC
+
+1. Copy **Host.exe** to the PC (USB, email, shared drive — any way)
+2. Double-click it — it starts immediately and sits in the system tray
+3. To make it start automatically: right-click → "Open file location" → copy shortcut to the Startup folder
+
+### To connect to a machine
+
+1. Log into Viewer
+2. See the machine appear in the Nodes list (it must have Host.exe running)
+3. Click the machine → **Connect**
+4. A consent dialog appears on the user's screen — they click Allow
+5. The remote session starts
+
+---
+
+## Part 4: Rebuilding Your Own Viewer EXE
+
+Do this when you rotate tokens or change the relay URL.
+
+1. Edit `.env` file (the only file you ever touch)
+2. Open PowerShell in project folder
+3. Run:
+```
 .\build.ps1 -PublishViewer
-# Output: dist\Viewer\Viewer.exe
 ```
-
-To log in as super admin:
-- Open Viewer.exe
-- Enter your Auth__SuperAdminToken from .env in the Admin Token field
-- Leave License Key empty
-- Click Connect to Relay
-- The Tenants tab appears (sub-admins do not see this tab)
+4. New EXE appears at `dist\Viewer\Viewer.exe`
+5. Copy it to your Desktop (replaces the old one)
 
 ---
 
-## Creating a New Sub-Admin (Full Workflow)
+## Part 5: Viewing Credentials for an Existing Sub-Admin
 
-### Step 1 - Create the tenant in Viewer
+If you forgot a sub-admin's token or need to rebuild their Host EXE:
 
-1. Open Viewer.exe, log in as super admin
-2. Click Tenants tab -> + New
-3. Enter display name and email -> Create Tenant
-4. A copyable credentials dialog appears:
+1. Open RemoteAdmin.exe → log in as super admin
+2. Click **Tenants** tab
+3. Find the sub-admin → click **Details**
+4. The credentials dialog opens — copy License Key or Admin Token
 
-   Tenant ID:    abc123...
-   License Key:  def456...   <- needed to build their Host EXE
-   Admin Token:  ghi789...   <- give this to the sub-admin to log in
+---
 
-### Step 2 - Build the Host EXE for this sub-admin
+## Part 6: Suspending / Resuming a Sub-Admin
 
-```powershell
-.\build.ps1 -PublishHostForTenant def456...
-# Paste their LicenseKey from the dialog
-# Output: dist\Host-def456\Host.exe
+- **Suspend** — blocks their Host machines from connecting. Use if they stop paying or cause problems.
+- **Resume** — re-activates them.
+
+1. Tenants tab → find the sub-admin
+2. Click **Suspend** or **Resume**
+
+---
+
+## Part 7: Deploying Relay Server Updates
+
+When you or your developer pushes code changes:
+
 ```
-
-### Step 3 - Distribute
-
-| What | Who gets it | Purpose |
-|------|-------------|---------|
-| dist\Host-def456\Host.exe | The sub-admin | They put this on each PC they want to control |
-| ghi789... (Admin Token) | The sub-admin | They paste this into Viewer.exe to log in |
-| Viewer.exe | The sub-admin | Same Viewer you use - universal app |
-
-The sub-admin gives Host.exe to their end users.
-End users just double-click it - zero config, zero setup.
-
----
-
-## Viewing Existing Tenant Credentials
-
-You can retrieve a sub-admin LicenseKey/AdminToken at any time:
-
-1. Viewer -> Tenants tab
-2. Click [Details] next to any tenant
-3. Full copyable credentials dialog opens, including build command
-
----
-
-## Managing Sub-Admins
-
-| Action | How |
-|--------|-----|
-| See all connected hosts | Nodes tab (you see all tenants) |
-| Suspend a sub-admin | Tenants -> Suspend (blocks new connections) |
-| Re-activate a sub-admin | Tenants -> Resume |
-
----
-
-## Your .env File (Single Source of Truth)
-
-```ini
-RELAY_URL=wss://remoteadmintool.onrender.com/relay
-Auth__SuperAdminToken=...   <- your login token (keep secret)
-Auth__HostToken=...         <- baked into every Host.exe
-RelayServer__TLS=false
-ConnectionStrings__Postgres=postgresql://...
-```
-
-Never commit .env to GitHub - it is gitignored.
-
----
-
-## Build Commands Reference
-
-```powershell
-# Rebuild everything after any .env change
-.\build.ps1
-
-# Build + publish YOUR super admin Viewer EXE
-.\build.ps1 -PublishViewer
-# -> dist\Viewer\Viewer.exe
-
-# Build + publish a Host EXE for one sub-admin
-.\build.ps1 -PublishHostForTenant <LicenseKey>
-# -> dist\Host-<first8chars>\Host.exe
-```
-
----
-
-## Render Dashboard - Environment Variables
-
-Go to dashboard.render.com -> your Web Service -> Environment.
-Set these (exact names, double underscore = nested key):
-
-| Variable | Value |
-|----------|-------|
-| Auth__SuperAdminToken | Your super admin token |
-| Auth__HostToken | Host registration token |
-| RelayServer__TLS | false (Render handles TLS) |
-| DATABASE_URL | Set automatically when you link Postgres |
-
-Do NOT use the old RAT_ prefix names.
-
----
-
-## Keep-Alive
-
-The relay pings itself every 2 minutes automatically.
-No external cron service needed. You will see in Render logs:
-  [KeepAlive] Ping 200 <- https://remoteadmintool.onrender.com/
-
----
-
-## Deploying Updates
-
-```powershell
 git add .
-git commit -m "your message"
+git commit -m "description of change"
 git push origin main
 ```
 
-Render auto-redeploys. Schema migrations run automatically on startup.
+Render automatically redeploys. Takes about 2 minutes. The relay stays live during the update.
 
 ---
 
-## Security Summary
+## Quick Reference
 
-| Item | Where | Risk |
-|------|-------|------|
-| Super admin token | .env + Render dashboard | Low - never committed |
-| Host token | Compiled into Host.exe | Medium - no admin access even if extracted |
-| License key | Compiled into each Host.exe | Medium - only lets hosts register, not log in as admin |
-| DB password | .env + DATABASE_URL on Render | Low - never in code |
+| Task | Command / Action |
+|------|-----------------|
+| Open your admin app | Double-click RemoteAdmin.exe on Desktop |
+| Log in as super admin | Admin Token = Auth__SuperAdminToken from .env, License Key = empty |
+| Create sub-admin | Tenants → + New |
+| Get sub-admin credentials | Tenants → Details |
+| Build Viewer EXE | PowerShell: `.\build.ps1 -PublishViewer` |
+| Build Host EXE for sub-admin | PowerShell: `.\build.ps1 -PublishHostForTenant <LicenseKey>` |
+| Suspend sub-admin | Tenants → Suspend |
+| Resume sub-admin | Tenants → Resume |
+| Deploy relay update | `git push origin main` |
 
-Rogue host protection: seat limits (MaxHosts) prevent new machine registrations beyond the allowed count.
-You can also ban individual machines by setting IsAllowed=false in the RegisteredHosts table.
+---
+
+## Your Tokens (fill in and store securely)
+
+| Token | Value |
+|-------|-------|
+| Super Admin Token | (see Auth__SuperAdminToken in .env) |
+| Relay URL | wss://remoteadmintool.onrender.com/relay |
+| Render Dashboard | https://dashboard.render.com |
