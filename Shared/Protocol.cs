@@ -213,6 +213,7 @@ public readonly record struct MonitorSelectMessage(int MonitorIndex);
 
 /// <summary>
 /// A lightweight summary of one sub-admin tenant, sent in the tenant list to the super admin.
+/// LicenseKey and AdminToken are included so super admin can view/share them at any time.
 /// </summary>
 public readonly record struct TenantInfoMessage(
     string TenantId,
@@ -221,7 +222,9 @@ public readonly record struct TenantInfoMessage(
     int OnlineNodeCount,
     int TotalNodeCount,
     bool IsActive,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    string LicenseKey,   // shown in super admin detail view
+    string AdminToken    // shown in super admin detail view
 );
 
 public readonly record struct TenantListMessage(

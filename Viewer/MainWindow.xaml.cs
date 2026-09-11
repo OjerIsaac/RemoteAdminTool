@@ -198,14 +198,12 @@ public partial class MainWindow : Window
                 return;
             }
 
-            MessageBox.Show(
-                $"Tenant created successfully!\n\n" +
-                $"Tenant ID:    {ack.TenantId}\n" +
-                $"License Key:  {ack.LicenseKey}\n" +
-                $"Admin Token:  {ack.AdminToken}\n\n" +
-                $"Embed the License Key into the Host appsettings.json for this sub-admin's installer.\n" +
-                $"Give the Admin Token to the sub-admin to log into the Viewer.",
-                "New Tenant Created", MessageBoxButton.OK, MessageBoxImage.Information);
+            // Show copyable credentials dialog instead of a plain MessageBox
+            TenantCredentialsDialog.ShowNewTenant(this,
+                ack.TenantId!, ack.LicenseKey!, ack.AdminToken!);
+
+            // Refresh the tenant list so the new entry appears
+            _ = _client?.RequestTenantListAsync();
         });
     }
 
@@ -236,15 +234,30 @@ public partial class MainWindow : Window
         if (_client is null || !_client.IsSuperAdmin) return;
         if (sender is System.Windows.Controls.Button btn && btn.Tag is string tenantId)
         {
+            var tenant = Tenants.FirstOrDefault(t => t.TenantId == tenantId);
+            var action = tenant?.IsActive == true ? "suspend" : "resume";
             var result = MessageBox.Show(
-                $"Are you sure you want to suspend tenant {tenantId}?\nTheir nodes will be disconnected from the relay.",
-                "Suspend Tenant", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                $"Are you sure you want to {action} '{tenant?.DisplayName}'?\nTheir hosts will be disconnected from the relay.",
+                $"{char.ToUpper(action[0]) + action[1..]} Tenant",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
             if (result == MessageBoxResult.Yes)
             {
-                await _client.SuspendTenantAsync(tenantId);
+                if (tenant?.IsActive == true)
+                    await _client.SuspendTenantAsync(tenantId);
+                else
+                    await _client.ResumeTenantAsync(tenantId);
                 await _client.RequestTenantListAsync();
             }
+        }
+    }
+
+    private void ViewTenantDetails_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.Tag is TenantViewModel vm)
+        {
+            TenantCredentialsDialog.ShowExisting(this,
+                vm.DisplayName, vm.TenantId, vm.LicenseKey, vm.AdminToken);
         }
     }
 
@@ -549,6 +562,9 @@ public class TenantViewModel
     public string AdminEmail { get; }
     public int OnlineNodeCount { get; }
     public bool IsActive { get; }
+    public string LicenseKey { get; }
+    public string AdminToken { get; }
+    public string StatusLabel => IsActive ? "Active" : "Suspended";
 
     public TenantViewModel(TenantInfoMessage msg)
     {
@@ -557,5 +573,7 @@ public class TenantViewModel
         AdminEmail = msg.AdminEmail;
         OnlineNodeCount = msg.OnlineNodeCount;
         IsActive = msg.IsActive;
+        LicenseKey = msg.LicenseKey;
+        AdminToken = msg.AdminToken;
     }
 }

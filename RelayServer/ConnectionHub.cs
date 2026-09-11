@@ -437,7 +437,8 @@ public sealed class ConnectionHub
             return new TenantInfoMessage(
                 t.TenantId, t.DisplayName, t.AdminEmail,
                 onlineCount, onlineCount, // TotalNodeCount will come from DB later
-                t.IsActive, t.CreatedAt);
+                t.IsActive, t.CreatedAt,
+                t.LicenseKey, t.AdminToken);
         }).ToArray();
 
         var msg = new TenantListMessage(infos);

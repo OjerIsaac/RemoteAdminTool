@@ -177,35 +177,51 @@
                             <DataTemplate>
                                 <Border Background="#313244" CornerRadius="6" Padding="10,8" Margin="2">
                                     <DockPanel>
-                                        <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center">
-                                            <Button x:Name="SuspendTenantBtn"
-                                                    Content="Suspend"
-                                                    Tag="{Binding TenantId}"
-                                                    Click="SuspendTenantButton_Click"
+                                        <!-- Action buttons -->
+                                        <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                            <!-- Details button -->
+                                            <Button Content="🔑 Details"
+                                                    Tag="{Binding}"
+                                                    Click="ViewTenantDetails_Click"
                                                     Style="{StaticResource SidebarButton}"
-                                                    Background="#f38ba8" Foreground="#1e1e2e"
-                                                    Padding="6,2" Margin="0" FontSize="10"/>
+                                                    Background="#89b4fa" Foreground="#1e1e2e"
+                                                    Padding="6,2" Margin="0,0,4,0" FontSize="10"/>
+                                            <!-- Suspend / Resume button -->
+                                            <Button Tag="{Binding TenantId}"
+                                                    Click="SuspendTenantButton_Click"
+                                                    Padding="6,2" Margin="0" FontSize="10">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource SidebarButton}">
+                                                        <Setter Property="Content" Value="Suspend"/>
+                                                        <Setter Property="Background" Value="#f38ba8"/>
+                                                        <Setter Property="Foreground" Value="#1e1e2e"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                                <Setter Property="Content" Value="Resume"/>
+                                                                <Setter Property="Background" Value="#a6e3a1"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
                                         </StackPanel>
+                                        <!-- Tenant info -->
                                         <StackPanel>
                                             <TextBlock Text="{Binding DisplayName}" FontSize="13"
                                                        FontWeight="SemiBold" Foreground="#cdd6f4"/>
                                             <TextBlock FontSize="10" Foreground="#6c7086" Margin="0,2,0,0">
                                                 <Run Text="{Binding OnlineNodeCount, Mode=OneWay}"/>
-                                                <Run Text=" nodes online"/>
+                                                <Run Text=" nodes online  •  "/>
+                                                <Run Text="{Binding AdminEmail, Mode=OneWay}"/>
                                             </TextBlock>
-                                            <TextBlock FontSize="10" Foreground="#a6adc8" Margin="0,1,0,0"
-                                                       Text="{Binding AdminEmail, Mode=OneWay}"/>
-                                            <TextBlock FontSize="9" Margin="0,2,0,0">
+                                            <TextBlock FontSize="9" Margin="0,2,0,0"
+                                                       Text="{Binding StatusLabel, Mode=OneWay}">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#a6e3a1"/>
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                <Setter Property="Foreground" Value="#a6e3a1"/>
-                                                                <Setter Property="Text" Value="Active"/>
-                                                            </DataTrigger>
                                                             <DataTrigger Binding="{Binding IsActive}" Value="False">
                                                                 <Setter Property="Foreground" Value="#f38ba8"/>
-                                                                <Setter Property="Text" Value="Suspended"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>

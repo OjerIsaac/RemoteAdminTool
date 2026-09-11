@@ -52,10 +52,10 @@ try
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
             .Build();
 
-        // RelayUrl and HostToken come from compiled constants — not readable as plain text
-        var relayUrl    = HostConstants.RelayUrl;
-        var authToken   = HostConstants.HostToken;
-        var licenseKey  = config["LicenseKey"] ?? "";
+        // RelayUrl, HostToken, and LicenseKey are compiled constants — not readable as plain text
+        var relayUrl   = HostConstants.RelayUrl;
+        var authToken  = HostConstants.HostToken;
+        var licenseKey = HostConstants.LicenseKey;
         var machineName = config["MachineName"] ?? Environment.MachineName;
         var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
 
@@ -64,11 +64,6 @@ try
         {
             machineId = Guid.NewGuid().ToString("N")[..12];
             Log.Warning("Generated new Machine ID: {MachineId}. Add to appsettings.json for persistence.", machineId);
-        }
-
-        if (string.IsNullOrEmpty(licenseKey))
-        {
-            Log.Warning("LicenseKey is not set in appsettings.json. Host will be rejected by the relay.");
         }
 
         var trayContext = new TrayApplicationContext();
