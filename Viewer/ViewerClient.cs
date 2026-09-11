@@ -32,6 +32,12 @@ public sealed class ViewerClient : IAsyncDisposable
     public event EventHandler<TenantInfoMessage[]>? TenantListReceived;
     public event EventHandler<CreateTenantAckMessage>? TenantCreated;
 
+    // ---- Remote Console + Monitor events ----
+    public event EventHandler<ShellOutputMessage>? ShellOutputReceived;
+    public event EventHandler? ShellStarted;
+    public event EventHandler? ShellEnded;
+    public event EventHandler<SystemStatsMessage>? SystemStatsReceived;
+
     /// <summary>
     /// Connect to the relay server and authenticate.
     /// - Sub-admins: pass their LicenseKey and AdminToken.
@@ -192,6 +198,26 @@ public sealed class ViewerClient : IAsyncDisposable
                         var tenantAck = JsonSerializer.Deserialize<CreateTenantAckMessage>(payload);
                         TenantCreated?.Invoke(this, tenantAck);
                         break;
+
+                    // ---- Remote Console ----
+                    case MessageType.ShellStarted:
+                        ShellStarted?.Invoke(this, EventArgs.Empty);
+                        break;
+
+                    case MessageType.ShellEnded:
+                        ShellEnded?.Invoke(this, EventArgs.Empty);
+                        break;
+
+                    case MessageType.ShellOutput:
+                        var shellOut = JsonSerializer.Deserialize<ShellOutputMessage>(payload);
+                        ShellOutputReceived?.Invoke(this, shellOut);
+                        break;
+
+                    // ---- System Monitor ----
+                    case MessageType.SystemStats:
+                        var stats = JsonSerializer.Deserialize<SystemStatsMessage>(payload);
+                        SystemStatsReceived?.Invoke(this, stats);
+                        break;
                 }
             }
         }
@@ -239,6 +265,18 @@ public sealed class ViewerClient : IAsyncDisposable
 
     public Task SelectMonitorAsync(int monitorIndex) =>
         SendAsync(MessageType.MonitorSelect, new MonitorSelectMessage(monitorIndex));
+
+    // ---- Remote Console ----
+
+    /// <summary>Send a line of text to the remote PowerShell stdin.</summary>
+    public Task SendShellInputAsync(string input) =>
+        SendAsync(MessageType.ShellInput, new ShellInputMessage(input));
+
+    // ---- System Monitor ----
+
+    /// <summary>Ask the Host to start or stop streaming system stats.</summary>
+    public Task SendStatsRequestAsync(bool enable) =>
+        SendAsync(MessageType.StatsRequest, new StatsRequestMessage(enable));
 
     // ---- File transfer ----
 

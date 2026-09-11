@@ -237,7 +237,7 @@
             </DockPanel>
         </Border>
 
-        <!-- ======= Main Area: Remote Screen ======= -->
+        <!-- ======= Main Area: Remote Screen + Console + Monitor ======= -->
         <Grid Grid.Column="1">
             <!-- Session toolbar -->
             <Border x:Name="SessionToolbar" VerticalAlignment="Top" Background="#181825"
@@ -247,13 +247,27 @@
                                FontSize="13" FontWeight="SemiBold" Foreground="#cba6f7"
                                VerticalAlignment="Center" Margin="4,0"/>
 
+                    <!-- Session tab buttons -->
+                    <StackPanel Orientation="Horizontal" Margin="16,0,0,0">
+                        <Button x:Name="TabScreenBtn" Content="🖥 Screen"
+                                Click="TabScreenBtn_Click"
+                                Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"
+                                Background="#89b4fa" Foreground="#1e1e2e" FontWeight="SemiBold"/>
+                        <Button x:Name="TabConsoleBtn" Content="⚡ Console"
+                                Click="TabConsoleBtn_Click"
+                                Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"/>
+                        <Button x:Name="TabMonitorBtn" Content="📊 Monitor"
+                                Click="TabMonitorBtn_Click"
+                                Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"/>
+                    </StackPanel>
+
                     <!-- Monitor selector -->
                     <ComboBox x:Name="MonitorSelector" Width="140" Margin="12,0"
                               Background="#313244" Foreground="#cdd6f4"
                               SelectionChanged="MonitorSelector_SelectionChanged"
                               Visibility="Collapsed"/>
 
-                    <!-- Toolbar buttons -->
+                    <!-- Right toolbar buttons -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Content="📋 Clipboard" Click="ClipboardSyncButton_Click"
                                 Style="{StaticResource SidebarButton}" Padding="8,4" FontSize="11"/>
@@ -270,7 +284,7 @@
                 </DockPanel>
             </Border>
 
-            <!-- Remote screen image -->
+            <!-- ── TAB: Screen ── -->
             <Image x:Name="RemoteScreenImage"
                    Stretch="Uniform"
                    MouseMove="RemoteScreenImage_MouseMove"
@@ -282,7 +296,122 @@
                    KeyUp="RemoteScreenImage_KeyUp"
                    Margin="0,36,0,0"/>
 
-            <!-- Placeholder -->
+            <!-- ── TAB: Console ── -->
+            <DockPanel x:Name="ConsolePanel" Visibility="Collapsed" Margin="0,36,0,0"
+                       Background="#11111b">
+                <!-- Input row pinned to bottom -->
+                <Border DockPanel.Dock="Bottom" Background="#1e1e2e" Padding="8,6"
+                        BorderBrush="#313244" BorderThickness="0,1,0,0">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Run" Width="60"
+                                Click="ConsoleRunBtn_Click"
+                                Background="#89b4fa" Foreground="#1e1e2e" FontWeight="SemiBold"
+                                FontFamily="Consolas" FontSize="12" Margin="8,0,0,0"
+                                BorderThickness="0" Padding="0"/>
+                        <TextBox x:Name="ConsoleInput"
+                                 Background="#313244" Foreground="#cdd6f4"
+                                 FontFamily="Consolas" FontSize="12"
+                                 BorderBrush="#45475a" BorderThickness="1"
+                                 Padding="8,4" CaretBrush="#cdd6f4"
+                                 KeyDown="ConsoleInput_KeyDown"
+                                 ToolTip="Type a PowerShell command and press Enter or Run"/>
+                    </DockPanel>
+                </Border>
+
+                <!-- Output area -->
+                <ScrollViewer x:Name="ConsoleScroller"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto"
+                              Background="#11111b">
+                    <TextBox x:Name="ConsoleOutput"
+                             IsReadOnly="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="Consolas" FontSize="12"
+                             Background="Transparent" Foreground="#cdd6f4"
+                             BorderThickness="0" Padding="12,10"
+                             CaretBrush="#cdd6f4"/>
+                </ScrollViewer>
+            </DockPanel>
+
+            <!-- ── TAB: Monitor ── -->
+            <ScrollViewer x:Name="MonitorPanel" Visibility="Collapsed" Margin="0,36,0,0"
+                          VerticalScrollBarVisibility="Auto" Background="#11111b">
+                <StackPanel Margin="16,12">
+
+                    <!-- CPU -->
+                    <TextBlock Text="CPU Usage" Foreground="#89b4fa" FontSize="12"
+                               FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <Grid Margin="0,0,0,12">
+                        <Border Background="#1e1e2e" CornerRadius="4" Height="18"/>
+                        <Border x:Name="CpuBar" Background="#89b4fa" CornerRadius="4" Height="18"
+                                HorizontalAlignment="Left" Width="0"/>
+                        <TextBlock x:Name="CpuLabel" Text="0%" Foreground="#cdd6f4" FontSize="11"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <!-- RAM -->
+                    <TextBlock Text="Memory (RAM)" Foreground="#a6e3a1" FontSize="12"
+                               FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <Grid Margin="0,0,0,12">
+                        <Border Background="#1e1e2e" CornerRadius="4" Height="18"/>
+                        <Border x:Name="RamBar" Background="#a6e3a1" CornerRadius="4" Height="18"
+                                HorizontalAlignment="Left" Width="0"/>
+                        <TextBlock x:Name="RamLabel" Text="0 / 0 MB" Foreground="#cdd6f4" FontSize="11"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <!-- Disk + Network stats row -->
+                    <UniformGrid Columns="2" Margin="0,0,0,12">
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Disk Read" Foreground="#f9e2af" FontSize="11"
+                                       FontWeight="SemiBold" Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DiskReadLabel" Text="0 MB/s"
+                                       Foreground="#cdd6f4" FontSize="13" FontWeight="Bold"/>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Disk Write" Foreground="#f9e2af" FontSize="11"
+                                       FontWeight="SemiBold" Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DiskWriteLabel" Text="0 MB/s"
+                                       Foreground="#cdd6f4" FontSize="13" FontWeight="Bold"/>
+                        </StackPanel>
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,16">
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Net Sent" Foreground="#cba6f7" FontSize="11"
+                                       FontWeight="SemiBold" Margin="0,0,0,2"/>
+                            <TextBlock x:Name="NetSentLabel" Text="0 MB/s"
+                                       Foreground="#cdd6f4" FontSize="13" FontWeight="Bold"/>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Net Recv" Foreground="#cba6f7" FontSize="11"
+                                       FontWeight="SemiBold" Margin="0,0,0,2"/>
+                            <TextBlock x:Name="NetRecvLabel" Text="0 MB/s"
+                                       Foreground="#cdd6f4" FontSize="13" FontWeight="Bold"/>
+                        </StackPanel>
+                    </UniformGrid>
+
+                    <!-- Process list -->
+                    <TextBlock Text="Top Processes (by RAM)" Foreground="#f38ba8" FontSize="12"
+                               FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <Border Background="#1e1e2e" CornerRadius="6" Padding="8">
+                        <ItemsControl x:Name="ProcessList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,3">
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding RamMb, StringFormat='{}{0} MB'}"
+                                                   Foreground="#6c7086" FontSize="11" FontFamily="Consolas"
+                                                   Width="60" TextAlignment="Right"/>
+                                        <TextBlock Text="{Binding Name}" Foreground="#cdd6f4" FontSize="11"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Placeholder (no session) -->
             <StackPanel x:Name="NoSessionPlaceholder"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
                 <TextBlock Text="No Active Session"
@@ -292,6 +421,7 @@
                            Margin="0,8,0,0"/>
             </StackPanel>
         </Grid>
+
 
         <!-- ======= Chat Panel (right side, togglable) ======= -->
         <Border Grid.Column="2" Background="#181825" BorderBrush="#313244" BorderThickness="1,0,0,0">

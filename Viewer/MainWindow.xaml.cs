@@ -15,11 +15,13 @@ public partial class MainWindow : Window
     private int _remoteWidth;
     private int _remoteHeight;
     private bool _chatVisible;
+    private double _monitorPanelWidth; // cached to calculate bar widths
 
     // View-model collections
     public ObservableCollection<HostInfoMessage> Nodes { get; } = new();
     public ObservableCollection<ChatEntry> ChatEntries { get; } = new();
     public ObservableCollection<TenantViewModel> Tenants { get; } = new();
+    public ObservableCollection<ProcessInfoData> ProcessItems { get; } = new();
 
     public MainWindow()
     {
@@ -27,6 +29,10 @@ public partial class MainWindow : Window
         NodeList.ItemsSource = Nodes;
         ChatMessages.ItemsSource = ChatEntries;
         TenantList.ItemsSource = Tenants;
+        ProcessList.ItemsSource = ProcessItems;
+
+        // Cache monitor panel width when it changes size
+        MonitorPanel.SizeChanged += (_, e) => _monitorPanelWidth = e.NewSize.Width;
 
         // RelayUrl is a compiled constant — set by build.ps1 from .env
         RelayUrlBox.Text = ViewerConstants.RelayUrl;
@@ -62,6 +68,10 @@ public partial class MainWindow : Window
         _client.Disconnected += OnDisconnected;
         _client.TenantListReceived += OnTenantListReceived;
         _client.TenantCreated += OnTenantCreated;
+        _client.ShellOutputReceived += OnShellOutputReceived;
+        _client.ShellStarted += OnShellStarted;
+        _client.ShellEnded += OnShellEnded;
+        _client.SystemStatsReceived += OnSystemStatsReceived;
 
         try
         {
@@ -465,6 +475,116 @@ public partial class MainWindow : Window
         NoSessionPlaceholder.Visibility = Visibility.Visible;
         MonitorSelector.Visibility = Visibility.Collapsed;
         MonitorSelector.Items.Clear();
+        // Hide console/monitor panels
+        ConsolePanel.Visibility = Visibility.Collapsed;
+        MonitorPanel.Visibility = Visibility.Collapsed;
+        RemoteScreenImage.Visibility = Visibility.Visible;
+        ConsoleOutput.Text = string.Empty;
+        ProcessItems.Clear();
+    }
+
+    // ---- Session tab switching ----
+
+    private void TabScreenBtn_Click(object sender, RoutedEventArgs e)  => SetSessionTab(0);
+    private void TabConsoleBtn_Click(object sender, RoutedEventArgs e)
+    {
+        SetSessionTab(1);
+        // Kick off the shell session on first open
+        if (_client is not null && ConsoleOutput.Text.Length == 0)
+            _ = _client.SendShellInputAsync("Write-Host 'Shell ready'");
+    }
+    private void TabMonitorBtn_Click(object sender, RoutedEventArgs e)
+    {
+        SetSessionTab(2);
+        _ = _client?.SendStatsRequestAsync(true);
+    }
+
+    private void SetSessionTab(int tab)
+    {
+        RemoteScreenImage.Visibility  = tab == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ConsolePanel.Visibility       = tab == 1 ? Visibility.Visible : Visibility.Collapsed;
+        MonitorPanel.Visibility       = tab == 2 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Highlight active tab button
+        var activeStyle  = "#89b4fa";
+        var inactiveBack = "Transparent";
+        void Style(System.Windows.Controls.Button btn, bool active)
+        {
+            btn.Background = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(
+                    active ? activeStyle : inactiveBack));
+            btn.Foreground = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(
+                    active ? "#1e1e2e" : "#cdd6f4"));
+            btn.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
+        }
+        Style(TabScreenBtn,  tab == 0);
+        Style(TabConsoleBtn, tab == 1);
+        Style(TabMonitorBtn, tab == 2);
+
+        // Stop stats when leaving monitor tab
+        if (tab != 2) _ = _client?.SendStatsRequestAsync(false);
+    }
+
+    // ---- Console handlers ----
+
+    private void OnShellStarted(object? sender, EventArgs e)
+        => Dispatcher.Invoke(() => AppendConsoleText("[Shell ready — type commands below]\n", isError: false));
+
+    private void OnShellEnded(object? sender, EventArgs e)
+        => Dispatcher.Invoke(() => AppendConsoleText("\n[Shell session ended]\n", isError: true));
+
+    private void OnShellOutputReceived(object? sender, ShellOutputMessage msg)
+        => Dispatcher.Invoke(() => AppendConsoleText(msg.Text + "\n", msg.IsError));
+
+    private void AppendConsoleText(string text, bool isError)
+    {
+        // Simple append — TextBox does not support per-run coloring, so errors get a prefix
+        ConsoleOutput.AppendText(isError ? $"[ERR] {text}" : text);
+        ConsoleScroller.ScrollToBottom();
+    }
+
+    private async void ConsoleRunBtn_Click(object sender, RoutedEventArgs e)
+        => await SendConsoleCommandAsync();
+
+    private async void ConsoleInput_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) await SendConsoleCommandAsync();
+    }
+
+    private async Task SendConsoleCommandAsync()
+    {
+        if (_client is null || string.IsNullOrWhiteSpace(ConsoleInput.Text)) return;
+        var cmd = ConsoleInput.Text.Trim();
+        ConsoleInput.Clear();
+        AppendConsoleText($"PS> {cmd}\n", isError: false);
+        await _client.SendShellInputAsync(cmd);
+    }
+
+    // ---- Monitor handlers ----
+
+    private void OnSystemStatsReceived(object? sender, SystemStatsMessage stats)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            var panelW = _monitorPanelWidth > 0 ? _monitorPanelWidth - 32 : 400;
+
+            CpuLabel.Text = $"{stats.CpuPercent:F1}%";
+            CpuBar.Width  = panelW * (stats.CpuPercent / 100.0);
+
+            double ramPct = stats.RamTotalMb > 0 ? (double)stats.RamUsedMb / stats.RamTotalMb : 0;
+            RamLabel.Text = $"{stats.RamUsedMb:N0} / {stats.RamTotalMb:N0} MB";
+            RamBar.Width  = panelW * ramPct;
+
+            DiskReadLabel.Text  = $"{stats.DiskReadMbps:F2} MB/s";
+            DiskWriteLabel.Text = $"{stats.DiskWriteMbps:F2} MB/s";
+            NetSentLabel.Text   = $"{stats.NetSentMbps:F2} MB/s";
+            NetRecvLabel.Text   = $"{stats.NetRecvMbps:F2} MB/s";
+
+            ProcessItems.Clear();
+            foreach (var p in stats.TopProcesses)
+                ProcessItems.Add(p);
+        });
     }
 
     // ---- Input forwarding ----

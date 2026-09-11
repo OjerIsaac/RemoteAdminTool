@@ -48,6 +48,16 @@ public enum MessageType : byte
     CreateTenantAck = 73,       // Relay -> SuperAdmin: tenant created / failed
     SuspendTenant = 74,         // SuperAdmin -> Relay: suspend a tenant (no new host connections)
     ResumeTenant = 75,          // SuperAdmin -> Relay: re-activate a suspended tenant
+
+    // ---- Remote Console (PowerShell) ----
+    ShellInput  = 80,           // Viewer -> Host: a line of text to send to the shell's stdin
+    ShellOutput = 81,           // Host -> Viewer: a chunk of stdout/stderr from the shell
+    ShellStarted = 82,          // Host -> Viewer: shell process is ready
+    ShellEnded  = 83,           // Host -> Viewer: shell process exited
+
+    // ---- System Monitor ----
+    StatsRequest = 90,          // Viewer -> Host: start (Enable=true) or stop (Enable=false) streaming stats
+    SystemStats  = 91,          // Host -> Viewer: live CPU, RAM, process, disk, network snapshot
 }
 
 public readonly record struct FrameHeader(
@@ -250,3 +260,37 @@ public readonly record struct CreateTenantAckMessage(
 
 public readonly record struct SuspendTenantMessage(string TenantId);
 public readonly record struct ResumeTenantMessage(string TenantId);
+
+// ---- Remote Console messages ----
+
+/// <summary>Viewer sends a line of text to the remote PowerShell stdin.</summary>
+public readonly record struct ShellInputMessage(string Input);
+
+/// <summary>Host streams a chunk of stdout or stderr back to the viewer.</summary>
+public readonly record struct ShellOutputMessage(string Text, bool IsError);
+
+// ShellStarted and ShellEnded carry no payload — empty byte[] is used.
+
+// ---- System Monitor messages ----
+
+/// <summary>Viewer asks the Host to start or stop sending SystemStats.</summary>
+public readonly record struct StatsRequestMessage(bool Enable);
+
+/// <summary>A snapshot of system health sent by the Host every ~2 seconds.</summary>
+public readonly record struct SystemStatsMessage(
+    double CpuPercent,
+    long RamUsedMb,
+    long RamTotalMb,
+    double DiskReadMbps,
+    double DiskWriteMbps,
+    double NetSentMbps,
+    double NetRecvMbps,
+    ProcessInfoData[] TopProcesses
+);
+
+public readonly record struct ProcessInfoData(
+    int Pid,
+    string Name,
+    double CpuPercent,
+    long RamMb
+);

@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Net.WebSockets;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using RemoteAdminTool.Shared;
 
@@ -25,6 +27,13 @@ public sealed class HostAgent
 
     private ClientWebSocket? _ws;
     private WebSocketStreamAdapter? _stream;
+
+    // Shell session (one persistent PowerShell process per remote session)
+    private Process? _shellProcess;
+    private CancellationTokenSource? _shellCts;
+
+    // Stats polling
+    private CancellationTokenSource? _statsCts;
 
     public event EventHandler<bool>? SessionStateChanged;
     public event EventHandler<string>? ConnectionStateChanged;
@@ -162,13 +171,9 @@ public sealed class HostAgent
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var clipboard = new ClipboardSyncService();
 
-        // Start clipboard sync
         if (_stream is not null)
-        {
             clipboard.Start(_stream, cts.Token);
-        }
 
-        // Send monitor list to admin so they can pick which screen to view
         await SendMonitorListAsync(cts.Token);
 
         var sendTask = FrameSendLoopAsync(cts.Token);
@@ -176,6 +181,10 @@ public sealed class HostAgent
 
         var finished = await Task.WhenAny(sendTask, receiveTask);
         cts.Cancel();
+
+        // Clean up shell + stats when session ends
+        StopShell();
+        StopStats();
 
         try { await Task.WhenAll(sendTask, receiveTask); }
         catch { /* expected once cancelled */ }
@@ -284,7 +293,17 @@ public sealed class HostAgent
                 case MessageType.ChatMessage:
                     var chat = JsonSerializer.Deserialize<ChatMessageData>(payload);
                     Console.WriteLine($"[Chat] {chat.SenderName}: {chat.Text}");
-                    // Could show a notification balloon on the tray icon here
+                    break;
+
+                case MessageType.ShellInput:
+                    var shellInput = JsonSerializer.Deserialize<ShellInputMessage>(payload);
+                    await HandleShellInputAsync(shellInput.Input, ct);
+                    break;
+
+                case MessageType.StatsRequest:
+                    var statsReq = JsonSerializer.Deserialize<StatsRequestMessage>(payload);
+                    if (statsReq.Enable) StartStats(ct);
+                    else StopStats();
                     break;
 
                 case MessageType.Heartbeat:
@@ -292,9 +311,220 @@ public sealed class HostAgent
 
                 case MessageType.Disconnect:
                 case MessageType.DisconnectFromHost:
-                    return; // Session ended by admin
+                    return;
             }
         }
     }
-}
 
+    // -------------------------------------------------------------------------
+    // REMOTE SHELL
+    // -------------------------------------------------------------------------
+
+    private async Task HandleShellInputAsync(string input, CancellationToken ct)
+    {
+        if (_stream is null) return;
+
+        // Start PowerShell process on first command
+        if (_shellProcess is null || _shellProcess.HasExited)
+            await StartShellAsync(ct);
+
+        try
+        {
+            await _shellProcess!.StandardInput.WriteLineAsync(input);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Shell] Write error: {ex.Message}");
+        }
+    }
+
+    private async Task StartShellAsync(CancellationToken ct)
+    {
+        if (_stream is null) return;
+        StopShell();
+
+        _shellCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var shellCt = _shellCts.Token;
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoLogo -NoProfile -NonInteractive",
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        _shellProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
+
+        _shellProcess.OutputDataReceived += async (_, e) =>
+        {
+            if (e.Data is null) return;
+            await SendShellOutputAsync(e.Data, isError: false, shellCt);
+        };
+
+        _shellProcess.ErrorDataReceived += async (_, e) =>
+        {
+            if (e.Data is null) return;
+            await SendShellOutputAsync(e.Data, isError: true, shellCt);
+        };
+
+        _shellProcess.Exited += async (_, _) =>
+        {
+            if (_stream is not null)
+                await MessageFraming.WriteFrameAsync(_stream, MessageType.ShellEnded,
+                    Array.Empty<byte>(), CancellationToken.None);
+        };
+
+        _shellProcess.Start();
+        _shellProcess.BeginOutputReadLine();
+        _shellProcess.BeginErrorReadLine();
+
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.ShellStarted,
+            Array.Empty<byte>(), ct);
+
+        Console.WriteLine("[Shell] PowerShell process started");
+    }
+
+    private async Task SendShellOutputAsync(string text, bool isError, CancellationToken ct)
+    {
+        if (_stream is null) return;
+        try
+        {
+            var msg = new ShellOutputMessage(text, isError);
+            await MessageFraming.WriteFrameAsync(_stream, MessageType.ShellOutput,
+                JsonSerializer.SerializeToUtf8Bytes(msg), ct);
+        }
+        catch { /* stream closed */ }
+    }
+
+    private void StopShell()
+    {
+        _shellCts?.Cancel();
+        _shellCts?.Dispose();
+        _shellCts = null;
+
+        try { _shellProcess?.Kill(entireProcessTree: true); } catch { }
+        _shellProcess?.Dispose();
+        _shellProcess = null;
+    }
+
+    // -------------------------------------------------------------------------
+    // SYSTEM MONITOR
+    // -------------------------------------------------------------------------
+
+    private void StartStats(CancellationToken sessionCt)
+    {
+        StopStats();
+        _statsCts = CancellationTokenSource.CreateLinkedTokenSource(sessionCt);
+        _ = StatsLoopAsync(_statsCts.Token);
+    }
+
+    private void StopStats()
+    {
+        _statsCts?.Cancel();
+        _statsCts?.Dispose();
+        _statsCts = null;
+    }
+
+    private async Task StatsLoopAsync(CancellationToken ct)
+    {
+        // CPU counter needs a 1-second warm-up sample
+        using var cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+        cpuCounter.NextValue(); // discard first reading
+        await Task.Delay(1000, ct);
+
+        // Disk and network counters
+        using var diskReadCounter  = new PerformanceCounter("PhysicalDisk", "Disk Read Bytes/sec",  "_Total");
+        using var diskWriteCounter = new PerformanceCounter("PhysicalDisk", "Disk Write Bytes/sec", "_Total");
+
+        // Pick the first active network adapter
+        var netCategory = new PerformanceCounterCategory("Network Interface");
+        var netInstances = netCategory.GetInstanceNames();
+        PerformanceCounter? netSentCounter  = null;
+        PerformanceCounter? netRecvCounter  = null;
+        if (netInstances.Length > 0)
+        {
+            netSentCounter = new PerformanceCounter("Network Interface", "Bytes Sent/sec",     netInstances[0]);
+            netRecvCounter = new PerformanceCounter("Network Interface", "Bytes Received/sec", netInstances[0]);
+        }
+
+        var ramInfo = GC.GetGCMemoryInfo();
+        long totalRam = GetTotalPhysicalMemory();
+
+        try
+        {
+            while (!ct.IsCancellationRequested && _stream is not null)
+            {
+                double cpu = cpuCounter.NextValue();
+                long usedRam = totalRam - (long)new PerformanceCounter("Memory", "Available Bytes").NextValue();
+
+                double diskRead  = diskReadCounter.NextValue()  / 1_048_576.0;
+                double diskWrite = diskWriteCounter.NextValue() / 1_048_576.0;
+                double netSent   = (netSentCounter?.NextValue() ?? 0) / 1_048_576.0;
+                double netRecv   = (netRecvCounter?.NextValue() ?? 0) / 1_048_576.0;
+
+                var processes = Process.GetProcesses()
+                    .Select(p =>
+                    {
+                        try { return new ProcessInfoData(p.Id, p.ProcessName, 0, p.WorkingSet64 / 1_048_576); }
+                        catch { return new ProcessInfoData(0, "?", 0, 0); }
+                    })
+                    .Where(p => p.Pid != 0)
+                    .OrderByDescending(p => p.RamMb)
+                    .Take(10)
+                    .ToArray();
+
+                var stats = new SystemStatsMessage(
+                    Math.Round(cpu, 1),
+                    usedRam / 1_048_576,
+                    totalRam / 1_048_576,
+                    Math.Round(diskRead, 2),
+                    Math.Round(diskWrite, 2),
+                    Math.Round(netSent, 2),
+                    Math.Round(netRecv, 2),
+                    processes
+                );
+
+                await MessageFraming.WriteFrameAsync(_stream, MessageType.SystemStats,
+                    JsonSerializer.SerializeToUtf8Bytes(stats), ct);
+
+                await Task.Delay(2000, ct);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Console.WriteLine($"[Stats] Error: {ex.Message}"); }
+        finally
+        {
+            netSentCounter?.Dispose();
+            netRecvCounter?.Dispose();
+        }
+    }
+
+    // ---- P/Invoke: get total installed physical RAM ----
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryStatusEx
+    {
+        public uint dwLength;
+        public uint dwMemoryLoad;
+        public ulong ullTotalPhys;
+        public ulong ullAvailPhys;
+        public ulong ullTotalPageFile;
+        public ulong ullAvailPageFile;
+        public ulong ullTotalVirtual;
+        public ulong ullAvailVirtual;
+        public ulong ullAvailExtendedVirtual;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx lpBuffer);
+
+    private static long GetTotalPhysicalMemory()
+    {
+        var status = new MemoryStatusEx { dwLength = (uint)Marshal.SizeOf<MemoryStatusEx>() };
+        return GlobalMemoryStatusEx(ref status) ? (long)status.ullTotalPhys : 0;
+    }
+}
