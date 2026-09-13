@@ -44,13 +44,9 @@ public sealed class HostBackgroundService : BackgroundService
         }
 
         var machineName = _config["MachineName"] ?? Environment.MachineName;
-        var machineId   = _config["MachineId"];
 
-        if (string.IsNullOrEmpty(machineId))
-        {
-            machineId = Guid.NewGuid().ToString("N")[..12];
-            _logger.LogWarning("No MachineId configured — generated {MachineId}. Add to appsettings.json.", machineId);
-        }
+        // MachineId derived from hardware — cannot be spoofed by copying appsettings.json
+        var machineId = await HardwareFingerprint.ComputeAsync();
 
         _logger.LogInformation("Starting Host agent as Windows Service");
         _logger.LogInformation("Machine: {MachineName} ({MachineId})", machineName, machineId);

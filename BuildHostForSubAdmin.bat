@@ -9,13 +9,18 @@ echo (Copy it from the Details button in your Viewer app)
 echo.
 set /p LICKEY="License Key: "
 echo.
-echo Building Host EXE with key: %LICKEY:~0,8%...
+echo Paste the sub-admin's HOST TOKEN below.
+echo (Copy it from the Details button in your Viewer app)
 echo.
-powershell -ExecutionPolicy Bypass -File "build.ps1" -PublishHostForTenant "%LICKEY%"
+set /p HOSTTOKEN="Host Token: "
+echo.
+echo Building Host EXE for key: %LICKEY:~0,8%...
+echo.
+powershell -ExecutionPolicy Bypass -File "build.ps1" -PublishHostForTenant "%LICKEY%" -HostToken "%HOSTTOKEN%"
 echo.
 echo When done, send BOTH files to the sub-admin:
 echo   Host\dist\Host.exe   ^<-- the agent
-echo   Host\dist\host.key   ^<-- their license key
+echo   Host\dist\host.key   ^<-- their hashed license key
 echo.
 echo Both files must stay in the same folder on every end-user machine.
 echo Future updates: only Host.exe is replaced automatically. host.key stays.

@@ -89,6 +89,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 builder.Services.AddSingleton<TenantStore>();
+builder.Services.AddSingleton<ConnectionRateLimiter>();
 
 // ---- Keep-alive: self-ping every 2 min to prevent Render free tier sleep ----
 builder.Services.AddHttpClient("keepalive", client =>
@@ -131,8 +132,9 @@ app.UseForwardedHeaders();
 var tenantStore = app.Services.GetRequiredService<TenantStore>();
 await tenantStore.InitializeAsync();
 
-var hub = new ConnectionHub(superAdminToken, tenantStore,
+var hub         = new ConnectionHub(superAdminToken, tenantStore,
     app.Services.GetRequiredService<IDbContextFactory<RelayDbContext>>());
+var rateLimiter = app.Services.GetRequiredService<ConnectionRateLimiter>();
 
 // Enable WebSocket support
 app.UseWebSockets(new WebSocketOptions
@@ -150,21 +152,30 @@ app.MapGet("/", () => Results.Ok(new
 }));
 
 // Auto-update version manifest
-// Clients (Host + Viewer) poll this on startup to check for new versions.
-// Set HOST_VERSION, VIEWER_VERSION, HOST_DOWNLOAD_URL, VIEWER_DOWNLOAD_URL in Render env vars.
-app.MapGet("/api/version", () =>
+// Requires X-Host-Token header matching the global host token (or any valid tenant token after Fix #1).
+app.MapGet("/api/version", (HttpContext context) =>
 {
-    var hostVersion    = Environment.GetEnvironmentVariable("HOST_VERSION")    ?? "1.0.0";
-    var viewerVersion  = Environment.GetEnvironmentVariable("VIEWER_VERSION")  ?? "1.0.0";
-    var hostUrl        = Environment.GetEnvironmentVariable("HOST_DOWNLOAD_URL")   ?? "";
-    var viewerUrl      = Environment.GetEnvironmentVariable("VIEWER_DOWNLOAD_URL") ?? "";
+    var providedToken = context.Request.Headers["X-Host-Token"].FirstOrDefault() ?? "";
+    var globalToken   = Environment.GetEnvironmentVariable("Auth__HostToken") ?? "";
+
+    if (string.IsNullOrEmpty(providedToken) || providedToken != globalToken)
+        return Results.Unauthorized();
+
+    var hostVersion   = Environment.GetEnvironmentVariable("HOST_VERSION")        ?? "1.0.0";
+    var viewerVersion = Environment.GetEnvironmentVariable("VIEWER_VERSION")       ?? "1.0.0";
+    var hostUrl       = Environment.GetEnvironmentVariable("HOST_DOWNLOAD_URL")    ?? "";
+    var viewerUrl     = Environment.GetEnvironmentVariable("VIEWER_DOWNLOAD_URL")  ?? "";
+    var hostSha256    = Environment.GetEnvironmentVariable("HOST_EXE_SHA256")      ?? "";
+    var viewerSha256  = Environment.GetEnvironmentVariable("VIEWER_EXE_SHA256")    ?? "";
 
     return Results.Ok(new
     {
-        host      = hostVersion,
-        viewer    = viewerVersion,
-        hostUrl   = hostUrl,
-        viewerUrl = viewerUrl
+        host        = hostVersion,
+        viewer      = viewerVersion,
+        hostUrl     = hostUrl,
+        viewerUrl   = viewerUrl,
+        hostSha256  = hostSha256,
+        viewerSha256= viewerSha256
     });
 });
 
@@ -178,12 +189,20 @@ app.Map("/relay", async (HttpContext context) =>
         return;
     }
 
+    var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    if (!rateLimiter.IsAllowed(ip))
+    {
+        context.Response.StatusCode = 429;
+        await context.Response.WriteAsync("Too many connection attempts. Try again later.");
+        return;
+    }
+
     var ws = await context.WebSockets.AcceptWebSocketAsync();
-    Console.WriteLine($"[Server] New WebSocket connection from {context.Connection.RemoteIpAddress}");
+    Console.WriteLine($"[Server] New WebSocket connection from {ip}");
 
     try
     {
-        await hub.HandleConnectionAsync(ws, context.RequestAborted);
+        await hub.HandleConnectionAsync(ws, ip, rateLimiter, context.RequestAborted);
     }
     catch (Exception ex)
     {

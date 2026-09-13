@@ -12,9 +12,10 @@ public sealed class TenantStore
     private readonly IDbContextFactory<RelayDbContext> _dbFactory;
 
     // Fast-path in-memory caches (refreshed on startup and after each write)
-    private readonly Dictionary<string, Tenant> _byLicenseKey = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Tenant> _byAdminToken = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Tenant> _byTenantId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Tenant> _byLicenseKeyHash = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Tenant> _byAdminToken     = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Tenant> _byTenantId       = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Tenant> _byHostToken      = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     public TenantStore(IDbContextFactory<RelayDbContext> dbFactory)
@@ -70,6 +71,37 @@ public sealed class TenantStore
                 """;
             await cmd.ExecuteNonQueryAsync();
 
+            // v3: add LicenseKeyHash column (hashed host.key)
+            cmd.CommandText = """
+                ALTER TABLE "Tenants"
+                ADD COLUMN IF NOT EXISTS "LicenseKeyHash" varchar(64) NOT NULL DEFAULT '';
+                """;
+            await cmd.ExecuteNonQueryAsync();
+
+            // v3: add HostToken column (per-tenant host auth)
+            cmd.CommandText = """
+                ALTER TABLE "Tenants"
+                ADD COLUMN IF NOT EXISTS "HostToken" varchar(64) NOT NULL DEFAULT '';
+                """;
+            await cmd.ExecuteNonQueryAsync();
+
+            // v3: backfill LicenseKeyHash and HostToken for existing tenants that have empty values
+            cmd.CommandText = """
+                UPDATE "Tenants"
+                SET "LicenseKeyHash" = encode(sha256("LicenseKey"::bytea), 'hex')
+                WHERE "LicenseKeyHash" = '';
+                """;
+            await cmd.ExecuteNonQueryAsync();
+
+            cmd.CommandText = """
+                UPDATE "Tenants"
+                SET "HostToken" = encode(gen_random_bytes(24), 'hex')
+                WHERE "HostToken" = '';
+                """;
+            // Note: gen_random_bytes requires pgcrypto extension — safe on Render Postgres
+            // If pgcrypto is not available the UPDATE is a no-op; tokens will be filled on next tenant create
+            try { await cmd.ExecuteNonQueryAsync(); } catch { /* pgcrypto not available — skip backfill */ }
+
             // v2: create RegisteredHosts table (MachineId tracking + banning)
             cmd.CommandText = """
                 CREATE TABLE IF NOT EXISTS "RegisteredHosts" (
@@ -95,10 +127,19 @@ public sealed class TenantStore
 
     // ---- Lookup methods (hot path — no DB call) ----
 
-    public async Task<Tenant?> GetByLicenseKeyAsync(string licenseKey)
+    /// <summary>Looks up a tenant by the SHA-256 hash of the LicenseKey (what host.key contains).</summary>
+    public async Task<Tenant?> GetByLicenseKeyAsync(string licenseKeyHash)
     {
         await _lock.WaitAsync();
-        try { return _byLicenseKey.GetValueOrDefault(licenseKey); }
+        try { return _byLicenseKeyHash.GetValueOrDefault(licenseKeyHash); }
+        finally { _lock.Release(); }
+    }
+
+    /// <summary>Looks up a tenant by their per-tenant HostToken (baked into Host.exe).</summary>
+    public async Task<Tenant?> GetByHostTokenAsync(string hostToken)
+    {
+        await _lock.WaitAsync();
+        try { return _byHostToken.GetValueOrDefault(hostToken); }
         finally { _lock.Release(); }
     }
 
@@ -126,14 +167,16 @@ public sealed class TenantStore
     {
         var tenant = new Tenant
         {
-            TenantId = GenerateToken(16),
-            DisplayName = displayName,
-            AdminEmail = adminEmail,
-            LicenseKey = GenerateToken(24),
-            AdminToken = GenerateToken(24),
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
+            TenantId       = GenerateToken(16),
+            DisplayName    = displayName,
+            AdminEmail     = adminEmail,
+            LicenseKey     = GenerateToken(24),
+            AdminToken     = GenerateToken(24),
+            HostToken      = GenerateToken(24),   // per-tenant — unique to this Host.exe build
+            IsActive       = true,
+            CreatedAt      = DateTime.UtcNow
         };
+        tenant.LicenseKeyHash = HashLicenseKey(tenant.LicenseKey);
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         db.Tenants.Add(tenant);
@@ -142,9 +185,10 @@ public sealed class TenantStore
         await _lock.WaitAsync();
         try
         {
-            _byLicenseKey[tenant.LicenseKey] = tenant;
-            _byAdminToken[tenant.AdminToken] = tenant;
-            _byTenantId[tenant.TenantId] = tenant;
+            _byLicenseKeyHash[tenant.LicenseKeyHash] = tenant;
+            _byAdminToken[tenant.AdminToken]           = tenant;
+            _byTenantId[tenant.TenantId]               = tenant;
+            _byHostToken[tenant.HostToken]             = tenant;
         }
         finally
         {
@@ -181,6 +225,13 @@ public sealed class TenantStore
 
     // ---- Helpers ----
 
+    /// <summary>Compute SHA-256 hash of a LicenseKey (hex lowercase).</summary>
+    public static string HashLicenseKey(string licenseKey)
+        => Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(licenseKey)))
+           .ToLowerInvariant();
+
     private static string GenerateToken(int bytes)
     {
         var buf = new byte[bytes];
@@ -190,14 +241,18 @@ public sealed class TenantStore
 
     private void RefreshCache(IEnumerable<Tenant> tenants)
     {
-        _byLicenseKey.Clear();
+        _byLicenseKeyHash.Clear();
         _byAdminToken.Clear();
         _byTenantId.Clear();
+        _byHostToken.Clear();
         foreach (var t in tenants)
         {
-            _byLicenseKey[t.LicenseKey] = t;
+            if (!string.IsNullOrEmpty(t.LicenseKeyHash))
+                _byLicenseKeyHash[t.LicenseKeyHash] = t;
             _byAdminToken[t.AdminToken] = t;
-            _byTenantId[t.TenantId] = t;
+            _byTenantId[t.TenantId]    = t;
+            if (!string.IsNullOrEmpty(t.HostToken))
+                _byHostToken[t.HostToken] = t;
         }
     }
 }

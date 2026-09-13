@@ -87,12 +87,9 @@ try
         var machineName = config["MachineName"] ?? Environment.MachineName;
         var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
 
-        var machineId = config["MachineId"];
-        if (string.IsNullOrEmpty(machineId))
-        {
-            machineId = Guid.NewGuid().ToString("N")[..12];
-            Log.Warning("Generated new Machine ID: {MachineId}. Add to appsettings.json for persistence.", machineId);
-        }
+        // MachineId is derived from hardware (CPU + mobo serial + MAC) — cannot be spoofed by copying a file
+        var machineId = await HardwareFingerprint.ComputeAsync();
+        Log.Information("Hardware MachineId: {MachineId}", machineId);
 
         var trayContext = new TrayApplicationContext();
         var agent = new HostAgent(relayUrl, machineId, machineName, authToken, licenseKey, unattendedMode);

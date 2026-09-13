@@ -47,7 +47,7 @@ public sealed class ConnectionHub
     /// <summary>
     /// Entry point for every new WebSocket connection. Reads the first frame to determine role.
     /// </summary>
-    public async Task HandleConnectionAsync(WebSocket ws, CancellationToken ct)
+    public async Task HandleConnectionAsync(WebSocket ws, string ip, ConnectionRateLimiter rateLimiter, CancellationToken ct)
     {
         using var stream = new WebSocketStreamAdapter(ws);
 
@@ -56,11 +56,11 @@ public sealed class ConnectionHub
         switch (type)
         {
             case MessageType.HostRegister:
-                await HandleHostConnectionAsync(ws, stream, payload, ct);
+                await HandleHostConnectionAsync(ws, stream, payload, ip, rateLimiter, ct);
                 break;
 
             case MessageType.AdminAuth:
-                await HandleAdminConnectionAsync(ws, stream, payload, ct);
+                await HandleAdminConnectionAsync(ws, stream, payload, ip, rateLimiter, ct);
                 break;
 
             default:
@@ -75,7 +75,7 @@ public sealed class ConnectionHub
     // -------------------------------------------------------------------------
 
     private async Task HandleHostConnectionAsync(WebSocket ws, WebSocketStreamAdapter stream,
-        byte[] payload, CancellationToken ct)
+        byte[] payload, string ip, ConnectionRateLimiter rateLimiter, CancellationToken ct)
     {
         var register = JsonSerializer.Deserialize<HostRegisterMessage>(payload);
 
@@ -83,6 +83,7 @@ public sealed class ConnectionHub
         var tenant = await _tenantStore.GetByLicenseKeyAsync(register.LicenseKey);
         if (tenant is null || !tenant.IsActive)
         {
+            rateLimiter.RecordFailure(ip);
             var reject = new HostRegisterAckMessage(false,
                 tenant is null ? "Unknown license key" : "Tenant is suspended");
             await MessageFraming.WriteFrameAsync(stream, MessageType.HostRegisterAck,
@@ -94,12 +95,15 @@ public sealed class ConnectionHub
         // 2. Validate host auth token
         if (register.AuthToken != GetHostTokenForTenant(tenant))
         {
+            rateLimiter.RecordFailure(ip);
             var reject = new HostRegisterAckMessage(false, "Invalid host auth token");
             await MessageFraming.WriteFrameAsync(stream, MessageType.HostRegisterAck,
                 JsonSerializer.SerializeToUtf8Bytes(reject), ct);
             await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Auth failed", ct);
             return;
         }
+
+        rateLimiter.RecordSuccess(ip);
 
         // 3. Seat limit + MachineId tracking
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
@@ -194,14 +198,18 @@ public sealed class ConnectionHub
     }
 
     /// <summary>
-    /// Host auth token: for now all tenants share the global host token from config.
-    /// Future: each tenant could have its own host token stored in the Tenant record.
+    /// Returns the auth token expected from Host.exe for this specific tenant.
+    /// After Fix #1: each tenant has their own HostToken stored in the DB.
+    /// Falls back to the global env var if tenant.HostToken is empty (pre-migration tenants).
     /// </summary>
     private string GetHostTokenForTenant(Tenant tenant)
     {
-        // Read from environment variable / config — the same global host token for now.
+        if (!string.IsNullOrEmpty(tenant.HostToken))
+            return tenant.HostToken;
+
+        // Fallback: pre-v3 tenants without a HostToken use the global token
         return Environment.GetEnvironmentVariable("Auth__HostToken")
-            ?? throw new InvalidOperationException("Auth__HostToken not configured");
+            ?? throw new InvalidOperationException("Auth__HostToken not configured and tenant has no HostToken");
     }
 
     private async Task HostIdleLoopAsync(ConnectedHost host, CancellationToken ct)
@@ -225,7 +233,7 @@ public sealed class ConnectionHub
     // -------------------------------------------------------------------------
 
     private async Task HandleAdminConnectionAsync(WebSocket ws, WebSocketStreamAdapter stream,
-        byte[] payload, CancellationToken ct)
+        byte[] payload, string ip, ConnectionRateLimiter rateLimiter, CancellationToken ct)
     {
         var auth = JsonSerializer.Deserialize<AdminAuthMessage>(payload);
 
@@ -238,6 +246,7 @@ public sealed class ConnectionHub
             tenant = await _tenantStore.GetByAdminTokenAsync(auth.AuthToken);
             if (tenant is null || !tenant.IsActive)
             {
+                rateLimiter.RecordFailure(ip);
                 var reject = new AdminAuthAckMessage(false,
                     tenant is null ? "Invalid admin token" : "Tenant is suspended", false);
                 await MessageFraming.WriteFrameAsync(stream, MessageType.AdminAuthAck,
@@ -246,6 +255,8 @@ public sealed class ConnectionHub
                 return;
             }
         }
+
+        rateLimiter.RecordSuccess(ip);
 
         var tenantKey = isSuperAdmin ? SuperAdminKey : tenant!.TenantId;
 
@@ -436,9 +447,9 @@ public sealed class ConnectionHub
             var onlineCount = _tenantHosts.TryGetValue(t.TenantId, out var pool) ? pool.Count : 0;
             return new TenantInfoMessage(
                 t.TenantId, t.DisplayName, t.AdminEmail,
-                onlineCount, onlineCount, // TotalNodeCount will come from DB later
+                onlineCount, onlineCount,
                 t.IsActive, t.CreatedAt,
-                t.LicenseKey, t.AdminToken);
+                t.LicenseKey, t.AdminToken, t.HostToken);
         }).ToArray();
 
         var msg = new TenantListMessage(infos);
@@ -453,13 +464,15 @@ public sealed class ConnectionHub
             var tenant = await _tenantStore.CreateTenantAsync(req.DisplayName, req.AdminEmail);
             var ack = new CreateTenantAckMessage(
                 true, null,
-                tenant.TenantId, tenant.LicenseKey, tenant.AdminToken);
+                tenant.TenantId, tenant.LicenseKey, tenant.AdminToken, tenant.HostToken);
+
             await MessageFraming.WriteFrameAsync(admin.Stream, MessageType.CreateTenantAck,
                 JsonSerializer.SerializeToUtf8Bytes(ack), ct);
         }
         catch (Exception ex)
         {
-            var ack = new CreateTenantAckMessage(false, ex.Message, null, null, null);
+            var ack = new CreateTenantAckMessage(false, ex.Message, null, null, null, null);
+
             await MessageFraming.WriteFrameAsync(admin.Stream, MessageType.CreateTenantAck,
                 JsonSerializer.SerializeToUtf8Bytes(ack), ct);
         }

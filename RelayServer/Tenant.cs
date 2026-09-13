@@ -20,12 +20,21 @@ public sealed class Tenant
     public string AdminEmail { get; set; } = string.Empty;
 
     /// <summary>
-    /// The license key embedded in Host installers for this tenant.
-    /// Hosts present this key when connecting to the relay.
+    /// The raw license key shown in the Viewer UI and used for building host.key.
+    /// Stored plain-text in DB for display and rebuild purposes.
+    /// The hashed version (LicenseKeyHash) is what Host.exe actually sends.
     /// </summary>
     [MaxLength(64)]
     [Required]
     public string LicenseKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// SHA-256 hash of LicenseKey (hex, lowercase). This is what is written to
+    /// host.key and what the Host sends to the relay for validation.
+    /// </summary>
+    [MaxLength(64)]
+    [Required]
+    public string LicenseKeyHash { get; set; } = string.Empty;
 
     /// <summary>
     /// Token the sub-admin enters in the Viewer app to authenticate.
@@ -33,6 +42,15 @@ public sealed class Tenant
     [MaxLength(64)]
     [Required]
     public string AdminToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Per-tenant host auth token — baked into this tenant's Host.exe only.
+    /// Prevents a sub-admin who reverse-engineers their EXE from registering
+    /// machines under another tenant's LicenseKey.
+    /// </summary>
+    [MaxLength(64)]
+    [Required]
+    public string HostToken { get; set; } = string.Empty;
 
     public bool IsActive { get; set; } = true;
 

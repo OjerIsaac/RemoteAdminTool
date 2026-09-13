@@ -4,10 +4,10 @@ namespace RemoteAdminTool.Viewer;
 
 public partial class TenantCredentialsDialog : Window
 {
-    private string _tenantId = string.Empty;
-    private string _licenseKey = string.Empty;
-    private string _adminToken = string.Empty;
-    private string _buildCommand = string.Empty;
+    private string _tenantId    = string.Empty;
+    private string _licenseKey  = string.Empty;
+    private string _adminToken  = string.Empty;
+    private string _hostToken   = string.Empty;
 
     public TenantCredentialsDialog()
     {
@@ -15,40 +15,39 @@ public partial class TenantCredentialsDialog : Window
     }
 
     /// <summary>Show credentials after creating a new tenant.</summary>
-    public static void ShowNewTenant(Window owner, string tenantId, string licenseKey, string adminToken)
+    public static void ShowNewTenant(Window owner, string tenantId, string licenseKey, string adminToken, string hostToken)
     {
         var dlg = new TenantCredentialsDialog { Owner = owner };
         dlg.TitleRun.Text = "Tenant Created Successfully";
         dlg.SubtitleText.Text =
-            "Save these credentials — the License Key is needed to build the Host EXE for this sub-admin.";
-        dlg.Load(tenantId, licenseKey, adminToken);
+            "Save these credentials. You need the License Key AND Host Token to build Host.exe for this sub-admin.";
+        dlg.Load(tenantId, licenseKey, adminToken, hostToken);
         dlg.ShowDialog();
     }
 
     /// <summary>Show credentials for an existing tenant (from the tenant list).</summary>
     public static void ShowExisting(Window owner, string displayName, string tenantId,
-        string licenseKey, string adminToken)
+        string licenseKey, string adminToken, string hostToken)
     {
         var dlg = new TenantCredentialsDialog { Owner = owner };
         dlg.TitleRun.Text = $"Credentials — {displayName}";
         dlg.SubtitleText.Text =
             "These are the stored credentials for this sub-admin tenant.";
-        dlg.Load(tenantId, licenseKey, adminToken);
+        dlg.Load(tenantId, licenseKey, adminToken, hostToken);
         dlg.ShowDialog();
     }
 
-    private void Load(string tenantId, string licenseKey, string adminToken)
+    private void Load(string tenantId, string licenseKey, string adminToken, string hostToken)
     {
-        _tenantId = tenantId;
+        _tenantId   = tenantId;
         _licenseKey = licenseKey;
         _adminToken = adminToken;
-        // The 'command' is actually just the license key — user pastes it into BuildHostForSubAdmin.bat
-        _buildCommand = licenseKey;
+        _hostToken  = hostToken;
 
-        TenantIdBox.Text = tenantId;
+        TenantIdBox.Text   = tenantId;
         LicenseKeyBox.Text = licenseKey;
         AdminTokenBox.Text = adminToken;
-        BuildCommandText.Text = _buildCommand;
+        HostTokenBox.Text  = hostToken;
     }
 
     private void CopyTenantId_Click(object sender, RoutedEventArgs e)
@@ -60,8 +59,8 @@ public partial class TenantCredentialsDialog : Window
     private void CopyAdminToken_Click(object sender, RoutedEventArgs e)
         => CopyToClipboard(_adminToken, "Admin Token");
 
-    private void CopyBuildCommand_Click(object sender, RoutedEventArgs e)
-        => CopyToClipboard(_buildCommand, "Build command");
+    private void CopyHostToken_Click(object sender, RoutedEventArgs e)
+        => CopyToClipboard(_hostToken, "Host Token");
 
     private static void CopyToClipboard(string text, string label)
     {

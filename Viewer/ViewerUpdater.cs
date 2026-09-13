@@ -1,13 +1,14 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace RemoteAdminTool.Viewer;
 
 /// <summary>
 /// Checks the relay's /api/version endpoint when the Viewer starts.
-/// If a newer Viewer is available, downloads and replaces the EXE, then relaunches.
+/// If a newer Viewer is available, verifies the SHA-256 hash, then replaces the EXE and relaunches.
 /// </summary>
 public static class ViewerUpdater
 {
@@ -22,31 +23,37 @@ public static class ViewerUpdater
         try
         {
             var versionUrl = $"{relayHttpUrl.TrimEnd('/')}/api/version";
-            var response   = await _http.GetStringAsync(versionUrl);
-            var doc        = JsonDocument.Parse(response);
 
-            if (!doc.RootElement.TryGetProperty("viewer", out var verEl) ||
+            using var request = new HttpRequestMessage(HttpMethod.Get, versionUrl);
+            request.Headers.TryAddWithoutValidation("X-Host-Token", ViewerConstants.HostToken);
+
+            using var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return false;
+
+            var json = await response.Content.ReadAsStringAsync();
+            var doc  = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("viewer",    out var verEl) ||
                 !doc.RootElement.TryGetProperty("viewerUrl", out var urlEl))
                 return false;
 
             var latestVersion = verEl.GetString() ?? currentVersion;
             var downloadUrl   = urlEl.GetString() ?? "";
+            var expectedHash  = doc.RootElement.TryGetProperty("viewerSha256", out var sha) ? sha.GetString() ?? "" : "";
 
             if (string.IsNullOrWhiteSpace(downloadUrl) || !IsNewer(latestVersion, currentVersion))
                 return false;
 
-            // Download in background — show a brief toast via the main window if available
-            await ApplyUpdateAsync(downloadUrl, latestVersion);
+            await ApplyUpdateAsync(downloadUrl, expectedHash);
             return true;
         }
         catch
         {
-            // Silent — never block the Viewer from starting due to a failed update check
             return false;
         }
     }
 
-    private static async Task ApplyUpdateAsync(string downloadUrl, string newVersion)
+    private static async Task ApplyUpdateAsync(string downloadUrl, string expectedSha256)
     {
         var exePath = Environment.ProcessPath
                       ?? Process.GetCurrentProcess().MainModule!.FileName!;
@@ -54,14 +61,18 @@ public static class ViewerUpdater
         var newPath = Path.Combine(exeDir, "Viewer.exe.new");
 
         var bytes = await _http.GetByteArrayAsync(downloadUrl);
+
+        // Verify SHA-256 before applying
+        if (!string.IsNullOrWhiteSpace(expectedSha256))
+        {
+            var actualHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            if (!string.Equals(actualHash, expectedSha256.ToLowerInvariant(), StringComparison.Ordinal))
+                return; // Hash mismatch — silently abort
+        }
+
         await File.WriteAllBytesAsync(newPath, bytes);
 
-        var script = $@"
-            Start-Sleep -Seconds 2
-            Move-Item -Force '{newPath}' '{exePath}'
-            Start-Process '{exePath}'
-        ".Trim();
-
+        var script = $@"Start-Sleep -Seconds 2; Move-Item -Force '{newPath}' '{exePath}'; Start-Process '{exePath}'";
         var psi = new ProcessStartInfo
         {
             FileName  = "powershell.exe",
@@ -70,7 +81,6 @@ public static class ViewerUpdater
             UseShellExecute = false,
             WindowStyle     = ProcessWindowStyle.Hidden
         };
-
         Process.Start(psi);
     }
 

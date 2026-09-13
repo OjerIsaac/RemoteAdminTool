@@ -233,8 +233,9 @@ public readonly record struct TenantInfoMessage(
     int TotalNodeCount,
     bool IsActive,
     DateTime CreatedAt,
-    string LicenseKey,   // shown in super admin detail view
-    string AdminToken    // shown in super admin detail view
+    string LicenseKey,   // shown in super admin detail view; also needed for BuildHostForSubAdmin.bat
+    string AdminToken,   // shown in super admin detail view
+    string HostToken     // per-tenant; baked into Host.exe — also shown in detail view
 );
 
 public readonly record struct TenantListMessage(
@@ -255,7 +256,8 @@ public readonly record struct CreateTenantAckMessage(
     string? Error,
     string? TenantId,
     string? LicenseKey,     // embed this into the Host installer for this sub-admin
-    string? AdminToken      // sub-admin uses this to log into the Viewer
+    string? AdminToken,     // sub-admin uses this to log into the Viewer
+    string? HostToken       // per-tenant host auth token; baked into Host.exe
 );
 
 public readonly record struct SuspendTenantMessage(string TenantId);

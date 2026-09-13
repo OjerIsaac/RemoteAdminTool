@@ -214,7 +214,7 @@ public partial class MainWindow : Window
 
             // Show copyable credentials dialog instead of a plain MessageBox
             TenantCredentialsDialog.ShowNewTenant(this,
-                ack.TenantId!, ack.LicenseKey!, ack.AdminToken!);
+                ack.TenantId!, ack.LicenseKey!, ack.AdminToken!, ack.HostToken ?? "");
 
             // Refresh the tenant list so the new entry appears
             _ = _client?.RequestTenantListAsync();
@@ -271,7 +271,7 @@ public partial class MainWindow : Window
         if (sender is System.Windows.Controls.Button btn && btn.Tag is TenantViewModel vm)
         {
             TenantCredentialsDialog.ShowExisting(this,
-                vm.DisplayName, vm.TenantId, vm.LicenseKey, vm.AdminToken);
+                vm.DisplayName, vm.TenantId, vm.LicenseKey, vm.AdminToken, vm.HostToken);
         }
     }
 
@@ -703,23 +703,25 @@ public record MonitorComboItem(int Index, string Label)
 /// </summary>
 public class TenantViewModel
 {
-    public string TenantId { get; }
-    public string DisplayName { get; }
-    public string AdminEmail { get; }
-    public int OnlineNodeCount { get; }
-    public bool IsActive { get; }
-    public string LicenseKey { get; }
-    public string AdminToken { get; }
+    public string TenantId       { get; }
+    public string DisplayName    { get; }
+    public string AdminEmail     { get; }
+    public int    OnlineNodeCount { get; }
+    public bool   IsActive       { get; }
+    public string LicenseKey     { get; }
+    public string AdminToken     { get; }
+    public string HostToken      { get; }
     public string StatusLabel => IsActive ? "Active" : "Suspended";
 
     public TenantViewModel(TenantInfoMessage msg)
     {
-        TenantId = msg.TenantId;
-        DisplayName = msg.DisplayName;
-        AdminEmail = msg.AdminEmail;
+        TenantId        = msg.TenantId;
+        DisplayName     = msg.DisplayName;
+        AdminEmail      = msg.AdminEmail;
         OnlineNodeCount = msg.OnlineNodeCount;
-        IsActive = msg.IsActive;
-        LicenseKey = msg.LicenseKey;
-        AdminToken = msg.AdminToken;
+        IsActive        = msg.IsActive;
+        LicenseKey      = msg.LicenseKey;
+        AdminToken      = msg.AdminToken;
+        HostToken       = msg.HostToken;
     }
 }

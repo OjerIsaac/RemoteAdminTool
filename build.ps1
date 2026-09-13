@@ -2,27 +2,29 @@
 # build.ps1 — RemoteAdminTool Master Build Script
 # ============================================================
 # Usage:
-#   .\build.ps1                                  — patch constants + build all
-#   .\build.ps1 -PublishViewer                   — build + publish Viewer EXE (Super Admin app)
-#   .\build.ps1 -PublishHostForTenant <key>      — build + publish Host EXE + host.key for one sub-admin
-#   .\build.ps1 -PublishAll                      — publish Viewer + build (no LicenseKey)
+#   .\build.ps1                                           — patch constants + build all
+#   .\build.ps1 -PublishViewer                            — build + publish Viewer EXE
+#   .\build.ps1 -PublishHostForTenant <key> -HostToken <token>  — build + publish Host EXE + host.key
+#   .\build.ps1 -PublishAll                               — publish Viewer + build
 #
 # Full workflow when creating a new sub-admin:
-#   1. In the Viewer, create the tenant and copy its LicenseKey
-#   2. Run: .\build.ps1 -PublishHostForTenant <the-license-key>
+#   1. In the Viewer, create the tenant and copy its LicenseKey AND HostToken
+#   2. Run BuildHostForSubAdmin.bat (it calls this script with both values)
 #   3. Grab Host\dist\Host.exe AND Host\dist\host.key — send BOTH to the sub-admin
 #   4. Sub-admin shares both files with their users (both must stay in same folder)
 #
 # Auto-update workflow (when you push a new Host/Viewer build):
 #   1. Bump HOST_VERSION or VIEWER_VERSION in .env
 #   2. Run .\build.ps1 -PublishAll  (or -PublishHostForTenant for Host only)
-#   3. Upload the new EXE to your download URL (GitHub Releases, Azure Blob, etc.)
-#   4. Set HOST_DOWNLOAD_URL / VIEWER_DOWNLOAD_URL in Render env vars
-#   5. Redeploy relay — existing installs self-update silently on next startup
+#   3. Upload the new EXE to your download URL (GitHub Releases, etc.)
+#   4. Copy the SHA-256 hash printed below into Render env vars
+#   5. Set HOST_DOWNLOAD_URL / VIEWER_DOWNLOAD_URL in Render env vars
+#   6. Redeploy relay — existing installs self-update silently on next startup
 # ============================================================
 
 param(
     [string]$PublishHostForTenant = "",   # LicenseKey for a specific sub-admin
+    [string]$HostToken            = "",   # Per-tenant HostToken (from Viewer Details dialog)
     [switch]$PublishViewer,
     [switch]$PublishAll
 )
@@ -43,30 +45,36 @@ Get-Content $envFile | Where-Object { $_ -match "^\s*([^#=\s][^=]*)=(.*)" } | Fo
 }
 
 $relayUrl      = $envVars["RELAY_URL"]
-$hostToken     = $envVars["Auth__HostToken"]
+$globalToken   = $envVars["Auth__HostToken"]
 $hostVersion   = if ($envVars["HOST_VERSION"])   { $envVars["HOST_VERSION"] }   else { "1.0.0" }
 $viewerVersion = if ($envVars["VIEWER_VERSION"]) { $envVars["VIEWER_VERSION"] } else { "1.0.0" }
 
-# Derive HTTP base URL from relay WebSocket URL  (wss://host/relay → https://host)
+# For -PublishHostForTenant: use the per-tenant HostToken if provided, otherwise fall back to global
+# (global is used for plain builds / Viewer; per-tenant overrides for Host EXE builds)
+$effectiveHostToken = if ($HostToken) { $HostToken } else { $globalToken }
+
+# Derive HTTP base URL from relay WebSocket URL  (wss://host/relay -> https://host)
 $relayHttpUrl = $relayUrl -replace "^wss://", "https://" -replace "^ws://", "http://"
 $relayHttpUrl = $relayHttpUrl -replace "/relay$", ""
 
-if (-not $relayUrl)  { Write-Error "RELAY_URL is not set in .env";       exit 1 }
-if (-not $hostToken) { Write-Error "Auth__HostToken is not set in .env"; exit 1 }
+if (-not $relayUrl)     { Write-Error "RELAY_URL is not set in .env";       exit 1 }
+if (-not $globalToken)  { Write-Error "Auth__HostToken is not set in .env"; exit 1 }
 
 Write-Host ""
 Write-Host "=== RemoteAdminTool Build ===" -ForegroundColor Cyan
 Write-Host "  RELAY_URL      = $relayUrl"
-Write-Host "  HOST_TOKEN     = $($hostToken.Substring(0,[Math]::Min(6,$hostToken.Length)))..."
+Write-Host "  GLOBAL_TOKEN   = $($globalToken.Substring(0,[Math]::Min(6,$globalToken.Length)))..."
 Write-Host "  HOST_VERSION   = $hostVersion"
 Write-Host "  VIEWER_VERSION = $viewerVersion"
 if ($PublishHostForTenant) {
     Write-Host "  LICENSE_KEY    = $($PublishHostForTenant.Substring(0,[Math]::Min(6,$PublishHostForTenant.Length)))..."
+    Write-Host "  HOST_TOKEN     = $($effectiveHostToken.Substring(0,[Math]::Min(6,$effectiveHostToken.Length)))..."
 }
 Write-Host ""
 
 # ---- [1/3] Patch Host/HostConstants.cs ----
-# LicenseKey is NO LONGER baked in — it is read from host.key at runtime.
+# LicenseKey is NOT baked in — it is read from host.key at runtime.
+# HostToken is per-tenant when publishing for a sub-admin; global for plain builds.
 $hostConstantsFile = Join-Path $root "Host\HostConstants.cs"
 Write-Host "[1/3] Patching Host/HostConstants.cs..." -ForegroundColor Yellow
 
@@ -82,7 +90,7 @@ internal static class HostConstants
 {
     public const string RelayUrl     = "$relayUrl";
     public const string RelayHttpUrl = "$relayHttpUrl";
-    public const string HostToken    = "$hostToken";
+    public const string HostToken    = "$effectiveHostToken";
     public const string AppVersion   = "$hostVersion";
 }
 "@
@@ -104,6 +112,7 @@ internal static class ViewerConstants
 {
     public const string RelayUrl     = "$relayUrl";
     public const string RelayHttpUrl = "$relayHttpUrl";
+    public const string HostToken    = "$globalToken";
     public const string AppVersion   = "$viewerVersion";
 }
 "@
@@ -119,6 +128,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "  Build succeeded." -ForegroundColor Green
 
+# Helper: compute SHA-256 of a file and return hex string
+function Get-FileSha256([string]$path) {
+    $hash = [System.Security.Cryptography.SHA256]::Create()
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    $hashBytes = $hash.ComputeHash($bytes)
+    return [System.BitConverter]::ToString($hashBytes).Replace("-","").ToLowerInvariant()
+}
+
 # ---- Publish Viewer (Super Admin app) ----
 if ($PublishViewer -or $PublishAll) {
     Write-Host ""
@@ -129,7 +146,12 @@ if ($PublishViewer -or $PublishAll) {
         -o $distViewer 2>&1 | Where-Object { $_ -match "error|warning|published" }
     if ($LASTEXITCODE -eq 0) {
         Get-ChildItem $distViewer -Exclude "Viewer.exe" | Remove-Item -Force
+        $viewerExe = Join-Path $distViewer "Viewer.exe"
+        $viewerHash = Get-FileSha256 $viewerExe
         Write-Host "  Viewer EXE -> $distViewer\Viewer.exe" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "  SHA-256 (paste into Render env var VIEWER_EXE_SHA256):" -ForegroundColor Yellow
+        Write-Host "  $viewerHash" -ForegroundColor Cyan
     }
 }
 
@@ -145,16 +167,28 @@ if ($PublishHostForTenant) {
         # Keep only Host.exe — remove debug/temp files
         Get-ChildItem $distHost -Exclude "Host.exe" | Remove-Item -Force
 
-        # Write host.key — the ONLY tenant-specific file (contains LicenseKey)
-        $keyFile = Join-Path $distHost "host.key"
-        Set-Content -Path $keyFile -Encoding UTF8 -NoNewline -Value $PublishHostForTenant
+        # Write host.key — contains SHA-256 hash of the LicenseKey (NOT the raw key)
+        # Host sends this hash to the relay; raw key stays in relay DB only (for display)
+        $licenseBytes  = [System.Text.Encoding]::UTF8.GetBytes($PublishHostForTenant)
+        $sha256        = [System.Security.Cryptography.SHA256]::Create()
+        $hashBytes     = $sha256.ComputeHash($licenseBytes)
+        $licenseHash   = [System.BitConverter]::ToString($hashBytes).Replace("-","").ToLowerInvariant()
+        $keyFile       = Join-Path $distHost "host.key"
+        Set-Content -Path $keyFile -Encoding UTF8 -NoNewline -Value $licenseHash
+
+        # Compute SHA-256 of the Host.exe itself (for auto-update verification)
+        $hostExe  = Join-Path $distHost "Host.exe"
+        $hostHash = Get-FileSha256 $hostExe
 
         Write-Host "  Host EXE -> $distHost\Host.exe" -ForegroundColor Green
-        Write-Host "  host.key -> $distHost\host.key" -ForegroundColor Green
+        Write-Host "  host.key -> $distHost\host.key  (contains SHA-256 of LicenseKey)" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "  SHA-256 (paste into Render env var HOST_EXE_SHA256):" -ForegroundColor Yellow
+        Write-Host "  $hostHash" -ForegroundColor Cyan
         Write-Host ""
         Write-Host "  Send BOTH files to the sub-admin:" -ForegroundColor Yellow
-        Write-Host "    Host.exe  - the agent (generic, same binary for all tenants)" -ForegroundColor DarkGray
-        Write-Host "    host.key  - their license key (keep this secret)" -ForegroundColor DarkGray
+        Write-Host "    Host.exe  - the agent (unique HostToken baked in for this tenant)" -ForegroundColor DarkGray
+        Write-Host "    host.key  - hashed license key (safe to leave on disk)" -ForegroundColor DarkGray
         Write-Host "    Both files must stay in the same folder on end-user machines." -ForegroundColor DarkGray
     }
 }
@@ -162,8 +196,7 @@ if ($PublishHostForTenant) {
 if ($PublishAll) {
     Write-Host ""
     Write-Host "Note: -PublishAll published the Viewer only." -ForegroundColor Yellow
-    Write-Host "To publish a Host EXE for a sub-admin, run:" -ForegroundColor Yellow
-    Write-Host "  .\build.ps1 -PublishHostForTenant <LicenseKey>" -ForegroundColor Cyan
+    Write-Host "To publish a Host EXE for a sub-admin, run BuildHostForSubAdmin.bat" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -172,12 +205,13 @@ Write-Host ""
 Write-Host "Quick reference:" -ForegroundColor White
 Write-Host "  Super admin logs in with:  Admin Token from .env (Auth__SuperAdminToken)"
 Write-Host "  Sub-admin logs in with:    Their AdminToken (click [Details] in Viewer)"
-Write-Host "  Host EXE for sub-admin:    .\build.ps1 -PublishHostForTenant <LicenseKey>"
+Write-Host "  Host EXE for sub-admin:    Double-click BuildHostForSubAdmin.bat"
 Write-Host ""
 Write-Host "Auto-update workflow:" -ForegroundColor White
 Write-Host "  1. Bump HOST_VERSION or VIEWER_VERSION in .env"
-Write-Host "  2. Run .\build.ps1 -PublishHostForTenant <key>  (or -PublishAll for Viewer)"
-Write-Host "  3. Upload new EXE to your download URL (GitHub Releases, Azure Blob, etc.)"
-Write-Host "  4. Set HOST_DOWNLOAD_URL / VIEWER_DOWNLOAD_URL in Render env vars + redeploy"
-Write-Host "  5. All running Hosts/Viewers auto-update silently on next startup"
+Write-Host "  2. Run BuildHostForSubAdmin.bat (or .\build.ps1 -PublishViewer)"
+Write-Host "  3. Upload new EXE to GitHub Releases — copy SHA-256 hash printed above"
+Write-Host "  4. Set HOST_EXE_SHA256 / VIEWER_EXE_SHA256 in Render env vars"
+Write-Host "  5. Set HOST_DOWNLOAD_URL / VIEWER_DOWNLOAD_URL in Render env vars + redeploy"
+Write-Host "  6. All running Hosts/Viewers auto-update silently on next startup"
 Write-Host ""
