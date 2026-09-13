@@ -7,5 +7,7 @@
 /// </summary>
 internal static class ViewerConstants
 {
-    public const string RelayUrl = "wss://remoteadmintool.onrender.com/relay";
+    public const string RelayUrl     = "wss://remoteadmintool.onrender.com/relay";
+    public const string RelayHttpUrl = "https://remoteadmintool.onrender.com";
+    public const string AppVersion   = "1.0.0";
 }

@@ -31,10 +31,11 @@ public sealed class HostBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // RelayUrl, HostToken, and LicenseKey are compiled constants — not in appsettings.json
+        // RelayUrl and HostToken are compiled constants; LicenseKey is read from host.key
         var relayUrl   = HostConstants.RelayUrl;
         var authToken  = HostConstants.HostToken;
-        var licenseKey = HostConstants.LicenseKey;
+        var keyFile    = Path.Combine(AppContext.BaseDirectory, "host.key");
+        var licenseKey = File.Exists(keyFile) ? (await File.ReadAllTextAsync(keyFile)).Trim() : string.Empty;
         var machineName = _config["MachineName"] ?? Environment.MachineName;
         var machineId   = _config["MachineId"];
 

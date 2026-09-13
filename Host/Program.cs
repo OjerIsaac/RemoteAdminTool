@@ -51,10 +51,30 @@ try
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
             .Build();
 
-        // RelayUrl, HostToken, and LicenseKey are compiled constants — not readable as plain text
+        // ---- Read LicenseKey from host.key (sits next to Host.exe) ----
+        var keyFile    = Path.Combine(AppContext.BaseDirectory, "host.key");
+        var licenseKey = string.Empty;
+        if (File.Exists(keyFile))
+        {
+            licenseKey = (await File.ReadAllTextAsync(keyFile)).Trim();
+        }
+        else
+        {
+            Log.Warning("host.key not found in {Dir}. Host will connect without a tenant license.", AppContext.BaseDirectory);
+        }
+
+        // ---- Auto-update check ----
+        var updated = await AutoUpdater.CheckAndUpdateAsync(HostConstants.RelayHttpUrl, HostConstants.AppVersion);
+        if (updated)
+        {
+            // A replacement process has been launched — exit this one cleanly
+            await Log.CloseAndFlushAsync();
+            return;
+        }
+
+        // RelayUrl, HostToken are compiled constants — not readable as plain text
         var relayUrl   = HostConstants.RelayUrl;
         var authToken  = HostConstants.HostToken;
-        var licenseKey = HostConstants.LicenseKey;
         var machineName = config["MachineName"] ?? Environment.MachineName;
         var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
 

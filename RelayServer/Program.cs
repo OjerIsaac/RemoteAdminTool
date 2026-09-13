@@ -149,6 +149,25 @@ app.MapGet("/", () => Results.Ok(new
     timestamp = DateTime.UtcNow
 }));
 
+// Auto-update version manifest
+// Clients (Host + Viewer) poll this on startup to check for new versions.
+// Set HOST_VERSION, VIEWER_VERSION, HOST_DOWNLOAD_URL, VIEWER_DOWNLOAD_URL in Render env vars.
+app.MapGet("/api/version", () =>
+{
+    var hostVersion    = Environment.GetEnvironmentVariable("HOST_VERSION")    ?? "1.0.0";
+    var viewerVersion  = Environment.GetEnvironmentVariable("VIEWER_VERSION")  ?? "1.0.0";
+    var hostUrl        = Environment.GetEnvironmentVariable("HOST_DOWNLOAD_URL")   ?? "";
+    var viewerUrl      = Environment.GetEnvironmentVariable("VIEWER_DOWNLOAD_URL") ?? "";
+
+    return Results.Ok(new
+    {
+        host      = hostVersion,
+        viewer    = viewerVersion,
+        hostUrl   = hostUrl,
+        viewerUrl = viewerUrl
+    });
+});
+
 // WebSocket endpoint — all hosts and admins connect here
 app.Map("/relay", async (HttpContext context) =>
 {
