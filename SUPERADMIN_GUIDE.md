@@ -169,28 +169,45 @@ Run `BuildHostForSubAdmin.bat` with **any** existing license key (just to produc
 ```
 This produces `Host\dist\Host.exe` — a generic binary, same for all tenants.
 
-### Step 3 — Upload the new Host.exe
+### Step 3 — Upload to GitHub Releases (get the download URL)
 
-Upload `Host\dist\Host.exe` to your download host (GitHub Releases, Azure Blob, Dropbox — anywhere with a direct download link). Copy the direct download URL.
+1. Go to your GitHub repo → click **Releases** (right side of the page)
+2. Click **Draft a new release**
+3. Click **Choose a tag** → type `v1.0.1` → click **Create new tag: v1.0.1**
+4. Give it a title (e.g. `Host v1.0.1`)
+5. Under **Attach binaries**, drag and drop `Host\dist\Host.exe`
+6. Click **Publish release**
+7. After publishing, right-click the `Host.exe` file listed under Assets → **Copy link address**
 
-### Step 4 — Update Render environment variables
-
-In the Render dashboard (your relay service) → **Environment** tab, set:
+The URL will look exactly like this:
 ```
-HOST_VERSION     = 1.0.1              ← must match what you put in .env
-HOST_DOWNLOAD_URL = https://your-url/Host.exe
+https://github.com/<your-username>/<your-repo>/releases/download/v1.0.1/Host.exe
 ```
-Then click **Save Changes** → Render redeploys automatically (~2 min).
+
+For example:
+```
+https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Host.exe
+```
+
+That is your `HOST_DOWNLOAD_URL`.
+
+### Step 4 — Set the URL in Render
+
+1. Go to [render.com](https://render.com) → your relay web service → **Environment** tab
+2. Find (or add) these two variables:
+   ```
+   HOST_VERSION      = 1.0.1
+   HOST_DOWNLOAD_URL = https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Host.exe
+   ```
+3. Click **Save Changes** — Render redeploys automatically (~2 min)
 
 ### Step 5 — Done
 
 On next startup, every running `Host.exe` will:
 1. Check `/api/version` on your relay
 2. See the newer version
-3. Download the new `Host.exe` silently
-4. Replace itself and restart automatically
-
-No end user sees anything. No resharing needed.
+3. Download the new `Host.exe` silently in the background
+4. Replace itself and restart — user sees nothing
 
 > **Note:** `host.key` is NEVER replaced during auto-update. Each machine keeps its original `host.key` forever.
 
@@ -198,10 +215,11 @@ No end user sees anything. No resharing needed.
 
 ## Part 7: Pushing Updates to Viewer.exe (Auto-Update)
 
-Same process, but for the sub-admin app.
+Same process as Host, but for the sub-admin app.
 
 ### Step 1 — Bump the version
 
+In `.env`:
 ```
 VIEWER_VERSION=1.0.1
 ```
@@ -213,14 +231,25 @@ VIEWER_VERSION=1.0.1
 ```
 Output: `Viewer\dist\Viewer.exe`
 
-### Step 3 — Upload + update Render
+### Step 3 — Upload to GitHub Releases
+
+Same as Part 6 Step 3, but upload `Viewer\dist\Viewer.exe`.
+
+You can attach **both** `Host.exe` and `Viewer.exe` to the same release tag if both changed.
+
+The URL will be:
+```
+https://github.com/<your-username>/<your-repo>/releases/download/v1.0.1/Viewer.exe
+```
+
+### Step 4 — Set the URL in Render
 
 ```
 VIEWER_VERSION      = 1.0.1
-VIEWER_DOWNLOAD_URL = https://your-url/Viewer.exe
+VIEWER_DOWNLOAD_URL = https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
 ```
 
-On next launch, sub-admins' Viewer.exe silently updates itself and relaunches.
+Save → Render redeploys → sub-admins' Viewer.exe silently updates itself on next launch.
 
 ---
 
