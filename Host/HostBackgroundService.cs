@@ -36,6 +36,13 @@ public sealed class HostBackgroundService : BackgroundService
         var authToken  = HostConstants.HostToken;
         var keyFile    = Path.Combine(AppContext.BaseDirectory, "host.key");
         var licenseKey = File.Exists(keyFile) ? (await File.ReadAllTextAsync(keyFile)).Trim() : string.Empty;
+
+        if (string.IsNullOrEmpty(licenseKey))
+        {
+            _logger.LogCritical("host.key is missing or empty in {Dir}. Host cannot start without a valid license key.", AppContext.BaseDirectory);
+            return; // Stop the service
+        }
+
         var machineName = _config["MachineName"] ?? Environment.MachineName;
         var machineId   = _config["MachineId"];
 

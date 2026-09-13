@@ -58,9 +58,18 @@ try
         {
             licenseKey = (await File.ReadAllTextAsync(keyFile)).Trim();
         }
-        else
+
+        if (string.IsNullOrEmpty(licenseKey))
         {
-            Log.Warning("host.key not found in {Dir}. Host will connect without a tenant license.", AppContext.BaseDirectory);
+            // No valid license — show a tray error and exit.
+            // The relay would reject this anyway, but we fail fast here for clarity.
+            Log.Error("host.key is missing or empty in {Dir}. Host cannot start without a valid license key.", AppContext.BaseDirectory);
+            System.Windows.Forms.MessageBox.Show(
+                "host.key is missing or invalid.\n\nPlease contact your administrator.",
+                "RemoteAdmin Host — License Error",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Error);
+            return;
         }
 
         // ---- Auto-update check ----
