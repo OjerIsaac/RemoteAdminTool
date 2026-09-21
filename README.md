@@ -27,13 +27,21 @@ Relay Server (Render - always on)
 ## Features
 
 | Feature | Details |
-|---------|---------| 
-| Remote Desktop | Real-time screen viewing with mouse and keyboard control |
+|---------|---------|
+| Remote Desktop | Real-time screen viewing with full mouse and keyboard control |
+| Hidden Cursor | Admin cursor hidden on remote screen, replaced with a tracking dot |
 | Multi-Tenant | Super admin → sub-admins → end-user nodes (3-tier isolation) |
 | Per-Tenant Host Token | Each sub-admin's Host.exe has a unique compiled-in token - key leaks don't cross tenants |
 | Hashed host.key | License key stored as SHA-256 hash on disk - raw key never written to the client |
 | Hardware MachineId | MachineId derived from CPU + motherboard + MAC - can't be spoofed by file copying |
 | Rate Limiting | 15 connections/IP/minute; 5 auth failures → 10-min IP ban |
+| Terminal | Full PowerShell / CMD shell with Up/Down history, red stderr, clear button, runtime shell switching |
+| Code Editor | Multi-line script editor (PowerShell or Batch) with output pane |
+| File Manager | Browse remote directories, upload/download files with progress, delete remote files |
+| Device Info | Machine name, username, OS version, uptime, CPU, RAM, IP addresses - auto-loaded at session start |
+| System Monitor | Live CPU, RAM, disk I/O, network stats and top processes |
+| Silent Mode | Connect without showing consent dialog on the remote machine (opt-in per build via appsettings) |
+| Auto-Reconnect | Viewer automatically retries connection every 5 seconds after a drop (up to 20 attempts) |
 | Auto-Update | Host/Viewer silently self-update from GitHub Releases on startup |
 | SHA-256 Update Verification | EXE hash verified before applying any auto-update - tampered binaries rejected |
 | Authenticated Version API | `/api/version` requires `X-Host-Token` - anonymous probing returns 401 |
@@ -43,7 +51,7 @@ Relay Server (Render - always on)
 | Adaptive Quality | JPEG quality auto-adjusts based on network conditions |
 | Multi-Monitor | Select which monitor to capture on remote machines |
 | Clipboard Sync | Bidirectional clipboard sharing |
-| File Transfer | Chunked file transfer with SHA-256 verification |
+| File Transfer (legacy) | Chunked file transfer with SHA-256 verification |
 | Chat | Real-time text chat between admin and remote user |
 | Consent Dialog | Remote user accepts or denies incoming connections |
 | Windows Service | Host can run as a background service for unattended access |
@@ -206,6 +214,29 @@ https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
 **How to get it:** GitHub repo → Releases → click the release → under Assets → right-click the file → **Copy link address**.
 
 > Leave `HOST_DOWNLOAD_URL` / `VIEWER_DOWNLOAD_URL` **blank** to disable auto-update entirely with no errors. Fill in once you publish to GitHub Releases.
+
+### Viewer auto-update - complete checklist
+
+Run this every time you want to push a new Viewer to sub-admins:
+
+```
+[ ] 1. In .env: bump VIEWER_VERSION (e.g. 1.0.0 → 1.1.0)
+[ ] 2. Run: .\build.ps1 -PublishViewer
+         Output: Viewer\dist\Viewer.exe + SHA-256 hash printed on screen
+[ ] 3. Copy the SHA-256 hash
+[ ] 4. Go to GitHub repo → Releases → Draft a new release
+         Tag: v1.1.0 | Drag Viewer\dist\Viewer.exe into assets | Publish
+[ ] 5. Right-click Viewer.exe under Assets → Copy link address
+         URL format: https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.1.0/Viewer.exe
+[ ] 6. On Render → Environment tab, set all three together:
+         VIEWER_VERSION      = 1.1.0
+         VIEWER_DOWNLOAD_URL = <URL from step 5>
+         VIEWER_EXE_SHA256   = <hash from step 3>
+[ ] 7. Click Save Changes → Render redeploys (~2 min)
+[ ] Done. Sub-admins get the update silently on next launch.
+```
+
+> **Host auto-update** follows the exact same pattern using `HOST_VERSION`, `HOST_DOWNLOAD_URL`, `HOST_EXE_SHA256`. See `SUPERADMIN_GUIDE.md` Part 6 for full details.
 
 ### SHA-256 update rule
 

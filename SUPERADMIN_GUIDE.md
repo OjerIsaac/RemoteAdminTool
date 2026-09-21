@@ -70,9 +70,16 @@ Click the red **Logout** button in the top-left bar at any time to disconnect cl
 
 | Tab | What it shows |
 |-----|---------------|
-| **🖥 Screen** | Live remote desktop - full mouse and keyboard control |
-| **⚡ Console** | Interactive PowerShell terminal on the remote machine |
-| **📊 Monitor** | Live CPU, RAM, disk, network stats + top processes |
+| **Screen** | Live remote desktop - full mouse and keyboard control. Your cursor is hidden; a blue dot tracks your position. |
+| **Terminal** | Interactive PowerShell or CMD terminal. Up/Down arrows cycle command history. Use the shell dropdown to switch between PowerShell and CMD. |
+| **Code** | Multi-line script editor. Write PowerShell or Batch code and click Run - output appears in the pane below. |
+| **Files** | File manager for the remote machine. Browse folders, upload files from your PC to the host, download files from the host to your PC, and delete remote files. |
+| **Device** | Machine info - CPU, RAM, OS version, uptime, IP addresses, disk space. Loaded automatically when a session starts. |
+| **Monitor** | Live CPU, RAM, disk, network stats and top running processes. |
+
+### Silent mode
+
+The **Silent** checkbox in the session toolbar lets you take control of a machine without showing the consent dialog to the remote user. The host machine must have `AllowRemoteSilentMode: true` in its `appsettings.json` (this is the default when you build from `build.ps1`). Tick it before clicking a node to connect silently.
 
 ---
 
@@ -335,49 +342,120 @@ On next startup, every running `Host.exe` will:
 
 ## Part 7: Pushing Updates to Viewer.exe (Auto-Update)
 
-Same process as Host. The variables are the same pattern - just `VIEWER_` instead of `HOST_`.
+When you ship a new Viewer (e.g. after adding new features like the Terminal, File Manager, Device tab etc.), every sub-admin's existing `Viewer.exe` downloads and installs it silently the next time they open it. They never have to do anything manually.
 
-### Step 1 - Bump the version
+### How the Viewer auto-update works
 
-In `.env`:
+Every time `Viewer.exe` starts, it hits `/api/version` on your relay and reads:
+
+| Field | Render env var | What it means |
+|-------|---------------|---------------|
+| `viewer` | `VIEWER_VERSION` | The latest version number (e.g. `1.1.0`) |
+| `viewerUrl` | `VIEWER_DOWNLOAD_URL` | The direct download link to the new `Viewer.exe` |
+| `viewerSha256` | `VIEWER_EXE_SHA256` | SHA-256 fingerprint of that EXE |
+
+If the relay version is higher than the compiled-in version, `Viewer.exe` downloads the file, checks its SHA-256, replaces itself on disk, and relaunches - all in the background.
+
+---
+
+### Step 1 - Bump the version in `.env`
+
+Open `.env` and increase `VIEWER_VERSION`:
 ```ini
-VIEWER_VERSION=1.0.1
+VIEWER_VERSION=1.1.0
 ```
+
+Pick a number higher than what sub-admins currently have. If they have `1.0.0`, use `1.1.0`.
+
+---
 
 ### Step 2 - Build the new Viewer.exe
 
+Open PowerShell in `C:\c#-projects\RemoteAdminTool\` and run:
 ```powershell
 .\build.ps1 -PublishViewer
 ```
-Output: `Viewer\dist\Viewer.exe`
 
-The script prints the SHA-256 hash at the end - copy it.
-
-### Step 3 - Upload to GitHub Releases and get the download URL
-
-Same steps as Part 6 Step 3, but upload `Viewer\dist\Viewer.exe`.
-
-You can attach **both** `Host.exe` and `Viewer.exe` to the same release tag if both changed:
-- Drag `Host\dist\Host.exe` → assets
-- Drag `Viewer\dist\Viewer.exe` → assets
-- Click Publish - you get two separate permanent links
-
-Viewer URL format:
+This produces `Viewer\dist\Viewer.exe` and prints at the end:
 ```
-https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
+  SHA-256 (paste into Render env var VIEWER_EXE_SHA256):
+  a3f8c2d91e0b4c7f...  (64 hex characters)
 ```
 
-Right-click `Viewer.exe` under Assets → **Copy link address** to get `VIEWER_DOWNLOAD_URL`.
+**Copy that hash immediately - you need it in Step 4.**
 
-### Step 4 - Update ALL three Render env vars
+---
+
+### Step 3 - Upload Viewer.exe to a GitHub Release
+
+This is where sub-admins' machines download the update from. GitHub Releases is free and the links are permanent.
+
+1. Go to your GitHub repo → click **Releases** on the right side of the page
+2. Click **Draft a new release**
+3. Click **Choose a tag** → type `v1.1.0` → click **Create new tag: v1.1.0**
+4. Title: `v1.1.0 - Viewer update` (or whatever describes the changes)
+5. Under the description box, drag and drop **`Viewer\dist\Viewer.exe`** into the assets area
+6. If you are also releasing a new Host.exe at the same time, drag **`Host\dist\Host.exe`** here too
+7. Click **Publish release**
+8. After publishing, scroll down to **Assets** → right-click **Viewer.exe** → **Copy link address**
+
+The URL looks like this (permanent - never changes for this release):
+```
+https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.1.0/Viewer.exe
+```
+
+> **Important:** You must use the `/releases/download/` link. Do NOT use the GitHub repo homepage URL or a commit URL - those don't work for direct downloads.
+
+---
+
+### Step 4 - Update three Render env vars
+
+Go to [render.com](https://render.com) → your relay web service → **Environment** tab.
+
+Set all three together - they must all match each other:
 
 ```
-VIEWER_VERSION      = 1.0.1
-VIEWER_DOWNLOAD_URL = https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
-VIEWER_EXE_SHA256   = <hash from Step 2>
+VIEWER_VERSION      = 1.1.0
+VIEWER_DOWNLOAD_URL = https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.1.0/Viewer.exe
+VIEWER_EXE_SHA256   = <the 64-character hash from Step 2>
 ```
 
-Save → Render redeploys → sub-admins' Viewer.exe silently updates itself on next launch.
+Click **Save Changes** - Render redeploys automatically (about 2 minutes).
+
+> **Why all three together?**
+> - If `VIEWER_VERSION` is old - clients think they are already up to date, skip the download
+> - If `VIEWER_DOWNLOAD_URL` points to the wrong file - download fails silently
+> - If `VIEWER_EXE_SHA256` is stale - clients download but reject the file, stay on old version
+
+---
+
+### Step 5 - Done
+
+Next time any sub-admin launches their `Viewer.exe`:
+1. It calls `/api/version` on your relay
+2. Sees `VIEWER_VERSION` (`1.1.0`) is higher than its compiled version (`1.0.0`)
+3. Downloads the file at `VIEWER_DOWNLOAD_URL`
+4. Verifies the SHA-256 matches `VIEWER_EXE_SHA256`
+5. If it matches - writes `Viewer.exe.new` to disk, launches a background PowerShell to swap it, exits
+6. New Viewer launches automatically - sub-admin is now on the latest version
+7. If hash does not match - silently aborts, keeps running old version, tries again next launch
+
+**The sub-admin does nothing. They just open their app as normal.**
+
+> **Note:** You only need to send them a new `Viewer.exe` manually the very first time. All updates after that are delivered silently through this mechanism.
+
+---
+
+### Viewer update decision table
+
+| Situation | What to do with `VIEWER_DOWNLOAD_URL` |
+|-----------|--------------------------------------|
+| Sub-admins don't have Viewer.exe yet | Send them `Viewer\dist\Viewer.exe` manually - first distribution only |
+| You haven't set up GitHub Releases yet | Leave `VIEWER_DOWNLOAD_URL` blank - auto-update disabled, no error |
+| First time setting up auto-update | Follow Steps 1-4 above exactly |
+| New feature release | Bump version → build → upload to new release tag → update all 3 Render vars |
+| `VIEWER_VERSION` not bumped | Sub-admins won't download - they think they're current |
+| `VIEWER_EXE_SHA256` is wrong | Sub-admins download but reject the file - stays on old version |
 
 ---
 
@@ -518,6 +596,6 @@ Render automatically redeploys. Takes about 2 minutes. Schema migrations run aut
 | Suspend a sub-admin | Tenants → Suspend |
 | Resume a sub-admin | Tenants → Resume |
 | Push Host update silently | Bump `HOST_VERSION` → build → upload → update Render: `HOST_DOWNLOAD_URL` + `HOST_EXE_SHA256` + `HOST_VERSION` |
-| Push Viewer update silently | Bump `VIEWER_VERSION` → `build.ps1 -PublishViewer` → upload → update Render: `VIEWER_DOWNLOAD_URL` + `VIEWER_EXE_SHA256` + `VIEWER_VERSION` |
+| Push Viewer update silently | 1. Bump `VIEWER_VERSION` in `.env` → 2. `build.ps1 -PublishViewer` → 3. Upload `Viewer\dist\Viewer.exe` to new GitHub Release → 4. Update Render: `VIEWER_VERSION` + `VIEWER_DOWNLOAD_URL` + `VIEWER_EXE_SHA256` → Save |
 | Deploy relay server update | `git push origin main` |
 | Update SHA-256 after a publish | Copy hash printed by `build.ps1` → Render Environment → `HOST_EXE_SHA256` or `VIEWER_EXE_SHA256` → Save |
