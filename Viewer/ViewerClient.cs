@@ -38,6 +38,11 @@ public sealed class ViewerClient : IAsyncDisposable
     public event EventHandler? ShellEnded;
     public event EventHandler<SystemStatsMessage>? SystemStatsReceived;
 
+    // ---- New feature events ----
+    public event EventHandler<DeviceInfoMessage>? DeviceInfoReceived;
+    public event EventHandler<DirectoryListResponseMessage>? DirectoryListReceived;
+    public event EventHandler<FileTransferRequestMessage>? FileTransferRequestReceived;
+
     /// <summary>
     /// Connect to the relay server and authenticate.
     /// - Sub-admins: pass their LicenseKey and AdminToken.
@@ -218,6 +223,23 @@ public sealed class ViewerClient : IAsyncDisposable
                         var stats = JsonSerializer.Deserialize<SystemStatsMessage>(payload);
                         SystemStatsReceived?.Invoke(this, stats);
                         break;
+
+                    // ---- Device Info ----
+                    case MessageType.DeviceInfo:
+                        var deviceInfo = JsonSerializer.Deserialize<DeviceInfoMessage>(payload);
+                        DeviceInfoReceived?.Invoke(this, deviceInfo);
+                        break;
+
+                    // ---- File Manager ----
+                    case MessageType.DirectoryListResponse:
+                        var dirResp = JsonSerializer.Deserialize<DirectoryListResponseMessage>(payload);
+                        DirectoryListReceived?.Invoke(this, dirResp);
+                        break;
+
+                    case MessageType.FileTransferRequest:
+                        var ftReq = JsonSerializer.Deserialize<FileTransferRequestMessage>(payload);
+                        FileTransferRequestReceived?.Invoke(this, ftReq);
+                        break;
                 }
             }
         }
@@ -268,7 +290,7 @@ public sealed class ViewerClient : IAsyncDisposable
 
     // ---- Remote Console ----
 
-    /// <summary>Send a line of text to the remote PowerShell stdin.</summary>
+    /// <summary>Send a line of text to the remote shell stdin.</summary>
     public Task SendShellInputAsync(string input) =>
         SendAsync(MessageType.ShellInput, new ShellInputMessage(input));
 
@@ -278,7 +300,45 @@ public sealed class ViewerClient : IAsyncDisposable
     public Task SendStatsRequestAsync(bool enable) =>
         SendAsync(MessageType.StatsRequest, new StatsRequestMessage(enable));
 
-    // ---- File transfer ----
+    // ---- Silent mode ----
+
+    /// <summary>Ask the host to enable/disable silent mode (no consent dialog).</summary>
+    public Task SetSilentModeAsync(bool silent) =>
+        SendAsync(MessageType.SetSilentMode, new SetSilentModeMessage(silent));
+
+    // ---- File Manager ----
+
+    /// <summary>Request a directory listing from the host.</summary>
+    public Task RequestDirectoryAsync(string path) =>
+        SendAsync(MessageType.DirectoryList, new DirectoryListMessage(path));
+
+    /// <summary>Delete a file or folder on the host.</summary>
+    public Task DeleteRemotePathAsync(string path) =>
+        SendAsync(MessageType.FileDelete, new FileDeleteMessage(path));
+
+    /// <summary>Send a local file to the host at the given destination path.</summary>
+    public async Task SendFileToHostAsync(string localPath, string remotePath, IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        if (_stream is null) return;
+        var svc = new FileTransferService();
+        await svc.SendFileAsync(_stream, localPath, remotePath, progress, ct);
+    }
+
+    /// <summary>Request the host to send a file to us (download from host).</summary>
+    public async Task<string> DownloadFileFromHostAsync(string remotePath, string localSaveDir, IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        if (_stream is null) throw new InvalidOperationException("Not connected.");
+        // Send a transfer request - host will respond with FileTransferData chunks
+        var req = new FileTransferRequestMessage(
+            Guid.NewGuid().ToString("N")[..8], Path.GetFileName(remotePath), 0, remotePath);
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.FileTransferRequest,
+            JsonSerializer.SerializeToUtf8Bytes(req));
+        // Receive
+        var svc = new FileTransferService();
+        return await svc.ReceiveFileAsync(_stream, req, localSaveDir, progress, ct);
+    }
+
+    // ---- File transfer (legacy) ----
 
     public Stream? GetStream() => _stream;
 

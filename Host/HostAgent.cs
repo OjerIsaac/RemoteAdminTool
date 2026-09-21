@@ -1,7 +1,10 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using RemoteAdminTool.Shared;
 
 namespace RemoteAdminTool.Host;
@@ -22,24 +25,31 @@ public sealed class HostAgent
     private readonly string _authToken;
     private readonly string _licenseKey;
     private readonly bool _unattendedMode;
+    private readonly bool _allowRemoteSilentMode;
     private readonly IScreenCapture _capture = ScreenCaptureFactory.Create();
     private readonly InputInjector _input = new();
 
+    private bool _silentMode; // runtime toggle - only effective when _allowRemoteSilentMode is true
     private ClientWebSocket? _ws;
     private WebSocketStreamAdapter? _stream;
 
-    // Shell session (one persistent PowerShell process per remote session)
+    // Shell session (one persistent process per remote session)
     private Process? _shellProcess;
     private CancellationTokenSource? _shellCts;
+    private string _shellType = "powershell"; // "powershell" or "cmd"
 
     // Stats polling
     private CancellationTokenSource? _statsCts;
+
+    // File transfer service
+    private readonly FileTransferService _fileTransfer = new();
 
     public event EventHandler<bool>? SessionStateChanged;
     public event EventHandler<string>? ConnectionStateChanged;
 
     public HostAgent(string relayUrl, string machineId, string machineName,
-        string authToken, string licenseKey, bool unattendedMode = false)
+        string authToken, string licenseKey, bool unattendedMode = false,
+        bool allowRemoteSilentMode = true)
     {
         _relayUrl = relayUrl;
         _machineId = machineId;
@@ -47,6 +57,7 @@ public sealed class HostAgent
         _authToken = authToken;
         _licenseKey = licenseKey;
         _unattendedMode = unattendedMode;
+        _allowRemoteSilentMode = allowRemoteSilentMode;
     }
 
     /// <summary>
@@ -135,8 +146,9 @@ public sealed class HostAgent
             switch (type)
             {
                 case MessageType.SessionStarted:
-                    // Ask the local user for consent (unless unattended mode)
-                    if (!ConsentDialog.RequestConsent(_unattendedMode))
+                    // Ask the local user for consent (unless unattended or silent mode)
+                    bool silentNow = _unattendedMode || _silentMode;
+                    if (!ConsentDialog.RequestConsent(silentNow))
                     {
                         Console.WriteLine("[HostAgent] Session DENIED by local user");
                         await MessageFraming.WriteFrameAsync(_stream!, MessageType.Disconnect,
@@ -175,6 +187,7 @@ public sealed class HostAgent
             clipboard.Start(_stream, cts.Token);
 
         await SendMonitorListAsync(cts.Token);
+        await SendDeviceInfoAsync(cts.Token);
 
         var sendTask = FrameSendLoopAsync(cts.Token);
         var receiveTask = InputReceiveLoopAsync(clipboard, cts.Token);
@@ -201,6 +214,135 @@ public sealed class HostAgent
         var msg = new MonitorListMessage(monitorData);
         await MessageFraming.WriteFrameAsync(_stream, MessageType.MonitorList,
             JsonSerializer.SerializeToUtf8Bytes(msg), ct);
+    }
+
+    private async Task SendDeviceInfoAsync(CancellationToken ct)
+    {
+        if (_stream is null) return;
+        try
+        {
+            // CPU model from registry
+            var cpuModel = "Unknown";
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine
+                    .OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
+                cpuModel = key?.GetValue("ProcessorNameString")?.ToString()?.Trim() ?? "Unknown";
+            }
+            catch { }
+
+            // IP addresses (non-loopback IPv4)
+            var ips = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up
+                         && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                .Select(a => a.Address.ToString())
+                .ToArray();
+
+            // System uptime
+            long uptimeSec = Environment.TickCount64 / 1000;
+
+            // System drive free/total
+            var sysRoot = Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\";
+            var driveInfo = new DriveInfo(sysRoot);
+            long driveFreeGb  = driveInfo.IsReady ? driveInfo.AvailableFreeSpace / 1_073_741_824L : 0;
+            long driveTotalGb = driveInfo.IsReady ? driveInfo.TotalSize           / 1_073_741_824L : 0;
+
+            // OS build
+            var osBuild = Environment.OSVersion.Version.Build.ToString();
+
+            // Get total RAM
+            long totalRamMb = GetTotalPhysicalMemory() / 1_048_576;
+
+            var msg = new DeviceInfoMessage(
+                MachineName:     Environment.MachineName,
+                OsVersion:       Environment.OSVersion.VersionString,
+                OsBuild:         osBuild,
+                CpuModel:        cpuModel,
+                CpuCores:        Environment.ProcessorCount,
+                RamTotalMb:      totalRamMb,
+                IpAddresses:     ips,
+                Username:        Environment.UserName,
+                Domain:          Environment.UserDomainName,
+                UptimeSeconds:   uptimeSec,
+                Timezone:        TimeZoneInfo.Local.DisplayName,
+                SystemDrive:     sysRoot,
+                SystemDriveFreeGb:  driveFreeGb,
+                SystemDriveTotalGb: driveTotalGb
+            );
+
+            await MessageFraming.WriteFrameAsync(_stream, MessageType.DeviceInfo,
+                JsonSerializer.SerializeToUtf8Bytes(msg), ct);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DeviceInfo] Failed to collect: {ex.Message}");
+        }
+    }
+
+    private async Task HandleDirectoryListAsync(string path, CancellationToken ct)
+    {
+        if (_stream is null) return;
+        try
+        {
+            // Special case: empty/root path -> list drives
+            DirectoryEntryData[] entries;
+            if (string.IsNullOrWhiteSpace(path) || path == "\\")
+            {
+                entries = DriveInfo.GetDrives()
+                    .Where(d => d.IsReady)
+                    .Select(d => new DirectoryEntryData(
+                        d.Name, d.Name, true, 0, DateTime.MinValue))
+                    .ToArray();
+                path = "\\";
+            }
+            else
+            {
+                var dirInfo = new DirectoryInfo(path);
+                var list    = new List<DirectoryEntryData>();
+
+                // Subdirectories
+                foreach (var dir in dirInfo.EnumerateDirectories())
+                {
+                    try { list.Add(new DirectoryEntryData(dir.Name, dir.FullName, true, 0, dir.LastWriteTime)); }
+                    catch { }
+                }
+                // Files
+                foreach (var file in dirInfo.EnumerateFiles())
+                {
+                    try { list.Add(new DirectoryEntryData(file.Name, file.FullName, false, file.Length, file.LastWriteTime)); }
+                    catch { }
+                }
+                entries = list.ToArray();
+            }
+
+            var response = new DirectoryListResponseMessage(path, entries, null);
+            await MessageFraming.WriteFrameAsync(_stream, MessageType.DirectoryListResponse,
+                JsonSerializer.SerializeToUtf8Bytes(response), ct);
+        }
+        catch (Exception ex)
+        {
+            var response = new DirectoryListResponseMessage(path, Array.Empty<DirectoryEntryData>(), ex.Message);
+            await MessageFraming.WriteFrameAsync(_stream, MessageType.DirectoryListResponse,
+                JsonSerializer.SerializeToUtf8Bytes(response), ct);
+        }
+    }
+
+    private static void HandleFileDelete(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+            else if (File.Exists(path))
+                File.Delete(path);
+            Console.WriteLine($"[FileDelete] Deleted: {path}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FileDelete] Failed: {ex.Message}");
+        }
     }
 
     private async Task FrameSendLoopAsync(CancellationToken ct)
@@ -306,6 +448,52 @@ public sealed class HostAgent
                     else StopStats();
                     break;
 
+                case MessageType.SetSilentMode:
+                    var silentReq = JsonSerializer.Deserialize<SetSilentModeMessage>(payload);
+                    if (_allowRemoteSilentMode)
+                    {
+                        _silentMode = silentReq.Silent;
+                        Console.WriteLine($"[HostAgent] Silent mode set to {_silentMode} by remote admin");
+                    }
+                    break;
+
+                case MessageType.DirectoryList:
+                    var dirReq = JsonSerializer.Deserialize<DirectoryListMessage>(payload);
+                    await HandleDirectoryListAsync(dirReq.Path, ct);
+                    break;
+
+                case MessageType.FileDelete:
+                    var delReq = JsonSerializer.Deserialize<FileDeleteMessage>(payload);
+                    HandleFileDelete(delReq.Path);
+                    break;
+
+                case MessageType.FileTransferRequest:
+                    var ftReq = JsonSerializer.Deserialize<FileTransferRequestMessage>(payload);
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // If DestinationPath exists as a file on THIS machine, viewer wants to DOWNLOAD it
+                            if (!string.IsNullOrEmpty(ftReq.DestinationPath) && File.Exists(ftReq.DestinationPath))
+                            {
+                                Console.WriteLine($"[FileTransfer] Sending file to viewer: {ftReq.DestinationPath}");
+                                await _fileTransfer.SendFileAsync(_stream!, ftReq.DestinationPath, null, ct: ct);
+                            }
+                            else
+                            {
+                                // Viewer is uploading a file TO the host
+                                var saveDir = ftReq.DestinationPath ?? Path.GetTempPath();
+                                await _fileTransfer.ReceiveFileAsync(_stream!, ftReq, saveDir, ct: ct);
+                                Console.WriteLine($"[FileTransfer] Received file: {ftReq.FileName}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[FileTransfer] Error: {ex.Message}");
+                        }
+                    }, ct);
+                    break;
+
                 case MessageType.Heartbeat:
                     break;
 
@@ -324,7 +512,17 @@ public sealed class HostAgent
     {
         if (_stream is null) return;
 
-        // Start PowerShell process on first command
+        // Special signal: Viewer wants to switch shell type
+        if (input.StartsWith("##SHELL_TYPE:"))
+        {
+            _shellType = input["##SHELL_TYPE:".Length..].Trim().ToLower();
+            Console.WriteLine($"[Shell] Switching shell type to: {_shellType}");
+            StopShell();
+            await StartShellAsync(ct);
+            return;
+        }
+
+        // Start shell process on first command
         if (_shellProcess is null || _shellProcess.HasExited)
             await StartShellAsync(ct);
 
@@ -346,15 +544,27 @@ public sealed class HostAgent
         _shellCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var shellCt = _shellCts.Token;
 
+        string fileName, arguments;
+        if (_shellType == "cmd")
+        {
+            fileName  = "cmd.exe";
+            arguments = "/Q"; // quiet mode
+        }
+        else
+        {
+            fileName  = "powershell.exe";
+            arguments = "-NoLogo -NoProfile -NonInteractive";
+        }
+
         var psi = new ProcessStartInfo
         {
-            FileName = "powershell.exe",
-            Arguments = "-NoLogo -NoProfile -NonInteractive",
-            RedirectStandardInput = true,
+            FileName               = fileName,
+            Arguments              = arguments,
+            RedirectStandardInput  = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
+            RedirectStandardError  = true,
+            UseShellExecute        = false,
+            CreateNoWindow         = true,
         };
 
         _shellProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
@@ -385,7 +595,7 @@ public sealed class HostAgent
         await MessageFraming.WriteFrameAsync(_stream, MessageType.ShellStarted,
             Array.Empty<byte>(), ct);
 
-        Console.WriteLine("[Shell] PowerShell process started");
+        Console.WriteLine($"[Shell] {fileName} process started");
     }
 
     private async Task SendShellOutputAsync(string text, bool isError, CancellationToken ct)

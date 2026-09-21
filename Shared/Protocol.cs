@@ -58,6 +58,17 @@ public enum MessageType : byte
     // ---- System Monitor ----
     StatsRequest = 90,          // Viewer -> Host: start (Enable=true) or stop (Enable=false) streaming stats
     SystemStats  = 91,          // Host -> Viewer: live CPU, RAM, process, disk, network snapshot
+
+    // ---- Device Info ----
+    DeviceInfo   = 92,          // Host -> Viewer: full device details sent once at session start
+
+    // ---- Silent mode ----
+    SetSilentMode = 93,         // Viewer -> Host: request to toggle silent (no consent) mode
+
+    // ---- File Manager ----
+    DirectoryList         = 100, // Viewer -> Host: list contents of a remote path
+    DirectoryListResponse = 101, // Host -> Viewer: directory entries
+    FileDelete            = 102, // Viewer -> Host: delete a remote file or folder
 }
 
 public readonly record struct FrameHeader(
@@ -296,3 +307,47 @@ public readonly record struct ProcessInfoData(
     double CpuPercent,
     long RamMb
 );
+
+// ---- Device Info ----
+
+/// <summary>Rich device snapshot sent once at session start.</summary>
+public readonly record struct DeviceInfoMessage(
+    string MachineName,
+    string OsVersion,
+    string OsBuild,
+    string CpuModel,
+    int CpuCores,
+    long RamTotalMb,
+    string[] IpAddresses,
+    string Username,
+    string Domain,
+    long UptimeSeconds,
+    string Timezone,
+    string SystemDrive,
+    long SystemDriveFreeGb,
+    long SystemDriveTotalGb
+);
+
+// ---- Silent mode ----
+
+public readonly record struct SetSilentModeMessage(bool Silent);
+
+// ---- File Manager ----
+
+public readonly record struct DirectoryListMessage(string Path);
+
+public readonly record struct DirectoryEntryData(
+    string Name,
+    string FullPath,
+    bool IsDirectory,
+    long SizeBytes,
+    DateTime LastModified
+);
+
+public readonly record struct DirectoryListResponseMessage(
+    string Path,
+    DirectoryEntryData[] Entries,
+    string? Error
+);
+
+public readonly record struct FileDeleteMessage(string Path);

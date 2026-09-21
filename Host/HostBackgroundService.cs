@@ -50,7 +50,8 @@ public sealed class HostBackgroundService : BackgroundService
             return;
         }
 
-        var machineName = _config["MachineName"] ?? Environment.MachineName;
+        var machineName            = _config["MachineName"] ?? Environment.MachineName;
+        var allowRemoteSilentMode  = bool.TryParse(_config["AllowRemoteSilentMode"], out var arsp) && arsp;
 
         // MachineId derived from hardware - cannot be spoofed by copying appsettings.json
         var machineId = await HardwareFingerprint.ComputeAsync();
@@ -60,7 +61,8 @@ public sealed class HostBackgroundService : BackgroundService
         _logger.LogInformation("Relay: {RelayUrl}", relayUrl);
 
         // Force unattended mode when running as a service (no interactive desktop)
-        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, licenseKey, unattendedMode: true);
+        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, licenseKey,
+            unattendedMode: true, allowRemoteSilentMode: allowRemoteSilentMode);
 
         agent.ConnectionStateChanged += (_, status) =>
         {

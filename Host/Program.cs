@@ -93,16 +93,18 @@ try
             return;
         }
 
-        var relayUrl       = HostConstants.RelayUrl;
-        var machineName    = config["MachineName"] ?? Environment.MachineName;
-        var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
+        var relayUrl              = HostConstants.RelayUrl;
+        var machineName           = config["MachineName"] ?? Environment.MachineName;
+        var unattendedMode        = bool.TryParse(config["UnattendedMode"],       out var ua)   && ua;
+        var allowRemoteSilentMode = bool.TryParse(config["AllowRemoteSilentMode"], out var arsp) && arsp;
 
         // MachineId is derived from hardware (CPU + mobo serial + MAC) - cannot be spoofed by copying a file
         var machineId = await HardwareFingerprint.ComputeAsync();
         Log.Information("Hardware MachineId: {MachineId}", machineId);
 
         var trayContext = new TrayApplicationContext();
-        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, licenseKey, unattendedMode);
+        var agent = new HostAgent(relayUrl, machineId, machineName, authToken, licenseKey,
+            unattendedMode, allowRemoteSilentMode);
 
         agent.SessionStateChanged += (_, isConnected) =>
         {
