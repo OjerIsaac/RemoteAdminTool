@@ -16,7 +16,7 @@ public static class AutoUpdater
 
     /// <summary>
     /// Call this once at startup before doing any real work.
-    /// Returns true if the process is being replaced — caller must exit immediately.
+    /// Returns true if the process is being replaced - caller must exit immediately.
     /// </summary>
     public static async Task<bool> CheckAndUpdateAsync(string relayHttpUrl, string currentVersion)
     {
@@ -32,7 +32,7 @@ public static class AutoUpdater
             using var response = await _http.SendAsync(request);
             if (!response.IsSuccessStatusCode)
             {
-                Console.WriteLine($"[Updater] Version check returned {(int)response.StatusCode} — skipping.");
+                Console.WriteLine($"[Updater] Version check returned {(int)response.StatusCode} - skipping.");
                 return false;
             }
 
@@ -42,7 +42,7 @@ public static class AutoUpdater
             if (!doc.RootElement.TryGetProperty("host",    out var hostVerEl) ||
                 !doc.RootElement.TryGetProperty("hostUrl", out var hostUrlEl))
             {
-                Console.WriteLine("[Updater] Version endpoint missing expected fields — skipping.");
+                Console.WriteLine("[Updater] Version endpoint missing expected fields - skipping.");
                 return false;
             }
 
@@ -52,7 +52,7 @@ public static class AutoUpdater
 
             if (string.IsNullOrWhiteSpace(downloadUrl))
             {
-                Console.WriteLine("[Updater] No download URL configured — skipping.");
+                Console.WriteLine("[Updater] No download URL configured - skipping.");
                 return false;
             }
 
@@ -109,7 +109,7 @@ public static class AutoUpdater
             WindowStyle     = ProcessWindowStyle.Hidden
         };
         Process.Start(psi);
-        Console.WriteLine("[Updater] Update applied — relaunching...");
+        Console.WriteLine("[Updater] Update applied - relaunching...");
     }
 
     private static bool IsNewer(string candidate, string current)

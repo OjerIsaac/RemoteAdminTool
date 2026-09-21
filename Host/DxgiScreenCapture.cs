@@ -12,7 +12,7 @@ namespace RemoteAdminTool.Host;
 
 /// <summary>
 /// GPU-accelerated screen capture using DXGI Desktop Duplication API.
-/// Much faster than GDI CopyFromScreen — captures only what changed on the desktop
+/// Much faster than GDI CopyFromScreen - captures only what changed on the desktop
 /// and works at GPU speed. Falls back gracefully if Desktop Duplication is unavailable
 /// (e.g., running under RDP, locked screen, or older GPU drivers).
 /// </summary>
@@ -86,7 +86,7 @@ public sealed class DxgiScreenCapture : IScreenCapture
 
                 if (result.Code == ResultCode.WaitTimeout.Code)
                 {
-                    // No new frame — screen hasn't changed. Return an empty array
+                    // No new frame - screen hasn't changed. Return an empty array
                     // to signal "no change" (caller can skip sending).
                     screenResource?.Dispose();
                     return Array.Empty<byte>();
@@ -140,7 +140,7 @@ public sealed class DxgiScreenCapture : IScreenCapture
             catch (SharpDXException ex) when (ex.ResultCode.Code == ResultCode.AccessLost.Code
                                               || ex.ResultCode.Code == ResultCode.DeviceRemoved.Code)
             {
-                // Access lost — desktop switch, UAC prompt, lock screen, etc.
+                // Access lost - desktop switch, UAC prompt, lock screen, etc.
                 // Re-initialize on next call.
                 Console.Error.WriteLine("[DXGI] Access lost, will reinitialize on next capture");
                 Cleanup();

@@ -70,7 +70,7 @@ public sealed class FileTransferService
         Directory.CreateDirectory(saveDirectory);
         var savePath = Path.Combine(saveDirectory, SanitizeFileName(request.FileName));
 
-        // Avoid overwriting — append number if file exists
+        // Avoid overwriting - append number if file exists
         var baseName = Path.GetFileNameWithoutExtension(savePath);
         var extension = Path.GetExtension(savePath);
         int counter = 1;

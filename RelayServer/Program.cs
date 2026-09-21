@@ -23,7 +23,7 @@ Log.Logger = new LoggerConfiguration()
 // ---- Configuration ----
 // ASP.NET Core merges (in priority order):
 //   1. Environment variables (Render dashboard / .env loaded above)
-//   2. appsettings.json (placeholder values only — safe to commit)
+//   2. appsettings.json (placeholder values only - safe to commit)
 // Env var naming: double-underscore maps to nested JSON keys
 //   e.g. Auth__SuperAdminToken  →  config["Auth:SuperAdminToken"]
 
@@ -79,11 +79,11 @@ builder.Services.AddDbContextFactory<RelayDbContext>(options =>
     options.UseNpgsql(connectionString,
         npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(5)));
 
-// ---- Forwarded Headers (required on Render — TLS is terminated at their edge) ----
+// ---- Forwarded Headers (required on Render - TLS is terminated at their edge) ----
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Trust all proxies (Render's infra) — restrict to specific IPs in high-security setups
+    // Trust all proxies (Render's infra) - restrict to specific IPs in high-security setups
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
@@ -125,7 +125,7 @@ builder.WebHost.ConfigureKestrel(options =>
 
 var app = builder.Build();
 
-// Must be first middleware — lets Kestrel know the original scheme was WSS/HTTPS
+// Must be first middleware - lets Kestrel know the original scheme was WSS/HTTPS
 app.UseForwardedHeaders();
 
 // ---- Initialize database + tenant store ----
@@ -179,7 +179,7 @@ app.MapGet("/api/version", (HttpContext context) =>
     });
 });
 
-// WebSocket endpoint — all hosts and admins connect here
+// WebSocket endpoint - all hosts and admins connect here
 app.Map("/relay", async (HttpContext context) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)
@@ -220,13 +220,13 @@ Console.WriteLine($"WebSocket endpoint: {scheme}://localhost:{listenPort}/relay"
 Console.WriteLine($"Health check: {httpScheme}://localhost:{listenPort}/");
 Console.WriteLine();
 Console.WriteLine("Environment variables:");
-Console.WriteLine("  RAT_SUPER_ADMIN_TOKEN   — Super admin token (platform owner)");
-Console.WriteLine("  RAT_HOST_TOKEN          — Host registration token");
-Console.WriteLine("  RAT_PORT                — Listen port (default: 5050)");
-Console.WriteLine("  RAT_TLS                 — Set to 'false' to disable TLS (always false on Render)");
-Console.WriteLine("  RAT_CERT_PATH           — Path to .pfx certificate file");
-Console.WriteLine("  RAT_CERT_PASSWORD       — Certificate password");
-Console.WriteLine("  DATABASE_URL            — PostgreSQL connection string (set automatically by Render Postgres)");
+Console.WriteLine("  RAT_SUPER_ADMIN_TOKEN   - Super admin token (platform owner)");
+Console.WriteLine("  RAT_HOST_TOKEN          - Host registration token");
+Console.WriteLine("  RAT_PORT                - Listen port (default: 5050)");
+Console.WriteLine("  RAT_TLS                 - Set to 'false' to disable TLS (always false on Render)");
+Console.WriteLine("  RAT_CERT_PATH           - Path to .pfx certificate file");
+Console.WriteLine("  RAT_CERT_PASSWORD       - Certificate password");
+Console.WriteLine("  DATABASE_URL            - PostgreSQL connection string (set automatically by Render Postgres)");
 Console.WriteLine();
 
 app.Run();

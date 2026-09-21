@@ -26,7 +26,7 @@ public static class HardwareFingerprint
     /// </summary>
     public static Task<string> ComputeAsync()
     {
-        // WMI calls are synchronous — run off the thread pool so we don't block startup
+        // WMI calls are synchronous - run off the thread pool so we don't block startup
         return Task.Run(() =>
         {
             try
@@ -74,7 +74,7 @@ public static class HardwareFingerprint
 
     /// <summary>
     /// Fallback for VMs or locked-down machines where WMI is unavailable.
-    /// Uses MachineName + UserName — not hardware-bound, but better than a random GUID.
+    /// Uses MachineName + UserName - not hardware-bound, but better than a random GUID.
     /// </summary>
     private static string FallbackId()
     {

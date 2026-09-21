@@ -41,7 +41,7 @@ public static class ConsentDialog
         }
         else
         {
-            // No forms open — show directly (we're likely on the main thread)
+            // No forms open - show directly (we're likely on the main thread)
             result = ShowDialog();
         }
 
@@ -53,7 +53,7 @@ public static class ConsentDialog
         return MessageBox.Show(
             "An administrator is requesting remote access to this computer.\n\n" +
             "Do you want to allow this connection?",
-            "Remote Admin — Connection Request",
+            "Remote Admin - Connection Request",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button2, // Default to "No" for safety

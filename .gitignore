@@ -129,3 +129,5 @@ RelayServer/appsettings.json
 ## TLS dev certs
 dev-cert.pfx
 *.pfx
+
+dist/*

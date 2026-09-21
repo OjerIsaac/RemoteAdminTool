@@ -44,7 +44,7 @@ public sealed class Tenant
     public string AdminToken { get; set; } = string.Empty;
 
     /// <summary>
-    /// Per-tenant host auth token — baked into this tenant's Host.exe only.
+    /// Per-tenant host auth token - baked into this tenant's Host.exe only.
     /// Prevents a sub-admin who reverse-engineers their EXE from registering
     /// machines under another tenant's LicenseKey.
     /// </summary>

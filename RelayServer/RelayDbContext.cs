@@ -24,7 +24,7 @@ public sealed class RelayDbContext : DbContext
 
         modelBuilder.Entity<RegisteredHost>(entity =>
         {
-            // A MachineId is unique within a tenant — same machine can't register twice
+            // A MachineId is unique within a tenant - same machine can't register twice
             entity.HasIndex(r => new { r.TenantId, r.MachineId }).IsUnique();
             entity.HasOne(r => r.Tenant)
                   .WithMany(t => t.KnownHosts)

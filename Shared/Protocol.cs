@@ -235,7 +235,7 @@ public readonly record struct TenantInfoMessage(
     DateTime CreatedAt,
     string LicenseKey,   // shown in super admin detail view; also needed for BuildHostForSubAdmin.bat
     string AdminToken,   // shown in super admin detail view
-    string HostToken     // per-tenant; baked into Host.exe — also shown in detail view
+    string HostToken     // per-tenant; baked into Host.exe - also shown in detail view
 );
 
 public readonly record struct TenantListMessage(
@@ -271,7 +271,7 @@ public readonly record struct ShellInputMessage(string Input);
 /// <summary>Host streams a chunk of stdout or stderr back to the viewer.</summary>
 public readonly record struct ShellOutputMessage(string Text, bool IsError);
 
-// ShellStarted and ShellEnded carry no payload — empty byte[] is used.
+// ShellStarted and ShellEnded carry no payload - empty byte[] is used.
 
 // ---- System Monitor messages ----
 

@@ -9,14 +9,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Check for a newer Viewer version — if updated, shut down and let the new EXE launch
+        // Check for a newer Viewer version - if updated, shut down and let the new EXE launch
         var updated = await ViewerUpdater.CheckAndUpdateAsync(
             ViewerConstants.RelayHttpUrl,
             ViewerConstants.AppVersion);
 
         if (updated)
         {
-            // New process launched by updater — exit this instance cleanly
+            // New process launched by updater - exit this instance cleanly
             Shutdown();
         }
     }

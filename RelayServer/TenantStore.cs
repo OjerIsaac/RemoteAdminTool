@@ -34,7 +34,7 @@ public sealed class TenantStore
         // Create tables that don't exist yet (fresh install)
         await db.Database.EnsureCreatedAsync();
 
-        // Apply incremental schema changes — safe to run multiple times
+        // Apply incremental schema changes - safe to run multiple times
         await ApplyMigrationsAsync(db);
 
         var tenants = await db.Tenants.ToListAsync();
@@ -52,7 +52,7 @@ public sealed class TenantStore
     }
 
     /// <summary>
-    /// Idempotent schema migrations — adds columns/tables introduced after the initial
+    /// Idempotent schema migrations - adds columns/tables introduced after the initial
     /// schema was created. Safe to run on every startup; each statement is guarded by
     /// an existence check so it's a no-op if already applied.
     /// </summary>
@@ -98,9 +98,9 @@ public sealed class TenantStore
                 SET "HostToken" = encode(gen_random_bytes(24), 'hex')
                 WHERE "HostToken" = '';
                 """;
-            // Note: gen_random_bytes requires pgcrypto extension — safe on Render Postgres
+            // Note: gen_random_bytes requires pgcrypto extension - safe on Render Postgres
             // If pgcrypto is not available the UPDATE is a no-op; tokens will be filled on next tenant create
-            try { await cmd.ExecuteNonQueryAsync(); } catch { /* pgcrypto not available — skip backfill */ }
+            try { await cmd.ExecuteNonQueryAsync(); } catch { /* pgcrypto not available - skip backfill */ }
 
             // v2: create RegisteredHosts table (MachineId tracking + banning)
             cmd.CommandText = """
@@ -125,7 +125,7 @@ public sealed class TenantStore
         }
     }
 
-    // ---- Lookup methods (hot path — no DB call) ----
+    // ---- Lookup methods (hot path - no DB call) ----
 
     /// <summary>Looks up a tenant by the SHA-256 hash of the LicenseKey (what host.key contains).</summary>
     public async Task<Tenant?> GetByLicenseKeyAsync(string licenseKeyHash)
@@ -172,7 +172,7 @@ public sealed class TenantStore
             AdminEmail     = adminEmail,
             LicenseKey     = GenerateToken(24),
             AdminToken     = GenerateToken(24),
-            HostToken      = GenerateToken(24),   // per-tenant — unique to this Host.exe build
+            HostToken      = GenerateToken(24),   // per-tenant - unique to this Host.exe build
             IsActive       = true,
             CreatedAt      = DateTime.UtcNow
         };

@@ -24,7 +24,7 @@ public static class CertificateHelper
         }
 
         // Generate a self-signed dev certificate
-        Console.WriteLine("[Cert] No certificate file found — generating self-signed dev certificate");
+        Console.WriteLine("[Cert] No certificate file found - generating self-signed dev certificate");
         return GenerateSelfSignedCert();
     }
 

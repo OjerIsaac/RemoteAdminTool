@@ -11,7 +11,7 @@ namespace RemoteAdminTool.Host;
 /// When the relay brokers a session (admin wants to view this machine), the agent
 /// begins sending screen frames and receiving input events through the relay.
 ///
-/// This replaces the old HostServer that listened on a port — outbound connections
+/// This replaces the old HostServer that listened on a port - outbound connections
 /// solve NAT traversal since only the relay needs to be publicly reachable.
 /// </summary>
 public sealed class HostAgent
@@ -118,7 +118,7 @@ public sealed class HostAgent
         ConnectionStateChanged?.Invoke(this, $"Registered as {_machineName}");
         Console.WriteLine($"[HostAgent] Registered with relay as {_machineName} ({_machineId})");
 
-        // Idle loop — wait for sessions from the relay
+        // Idle loop - wait for sessions from the relay
         await IdleLoopAsync(ct);
     }
 
@@ -143,11 +143,11 @@ public sealed class HostAgent
                             Array.Empty<byte>(), ct);
                         break;
                     }
-                    Console.WriteLine("[HostAgent] Session started — admin connected");
+                    Console.WriteLine("[HostAgent] Session started - admin connected");
                     SessionStateChanged?.Invoke(this, true);
                     await RunSessionAsync(ct);
                     SessionStateChanged?.Invoke(this, false);
-                    Console.WriteLine("[HostAgent] Session ended — back to idle");
+                    Console.WriteLine("[HostAgent] Session ended - back to idle");
                     break;
 
                 case MessageType.Heartbeat:
@@ -221,7 +221,7 @@ public sealed class HostAgent
 
             var frameBytes = _capture.CaptureFrameAsJpeg(quality: jpegQuality);
 
-            // DXGI returns empty when screen hasn't changed — skip sending
+            // DXGI returns empty when screen hasn't changed - skip sending
             if (frameBytes.Length > 0)
             {
                 await MessageFraming.WriteFrameAsync(_stream, MessageType.FrameData, frameBytes, ct);

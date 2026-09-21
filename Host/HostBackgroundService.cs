@@ -45,7 +45,7 @@ public sealed class HostBackgroundService : BackgroundService
 
         var machineName = _config["MachineName"] ?? Environment.MachineName;
 
-        // MachineId derived from hardware — cannot be spoofed by copying appsettings.json
+        // MachineId derived from hardware - cannot be spoofed by copying appsettings.json
         var machineId = await HardwareFingerprint.ComputeAsync();
 
         _logger.LogInformation("Starting Host agent as Windows Service");

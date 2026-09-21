@@ -34,7 +34,7 @@ public partial class MainWindow : Window
         // Cache monitor panel width when it changes size
         MonitorPanel.SizeChanged += (_, e) => _monitorPanelWidth = e.NewSize.Width;
 
-        // RelayUrl is a compiled constant — set by build.ps1 from .env
+        // RelayUrl is a compiled constant - set by build.ps1 from .env
         RelayUrlBox.Text = ViewerConstants.RelayUrl;
     }
 
@@ -235,7 +235,7 @@ public partial class MainWindow : Window
     private void TenantList_SelectionChanged(object sender,
         System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        // Clicking a tenant could filter the node list — future enhancement
+        // Clicking a tenant could filter the node list - future enhancement
         // For now, just switch to Nodes tab showing all hosts (super admin already sees all)
         if (TenantList.SelectedItem is TenantViewModel selectedTenant)
         {
@@ -555,7 +555,7 @@ public partial class MainWindow : Window
     // ---- Console handlers ----
 
     private void OnShellStarted(object? sender, EventArgs e)
-        => Dispatcher.Invoke(() => AppendConsoleText("[Shell ready — type commands below]\n", isError: false));
+        => Dispatcher.Invoke(() => AppendConsoleText("[Shell ready - type commands below]\n", isError: false));
 
     private void OnShellEnded(object? sender, EventArgs e)
         => Dispatcher.Invoke(() => AppendConsoleText("\n[Shell session ended]\n", isError: true));
@@ -565,7 +565,7 @@ public partial class MainWindow : Window
 
     private void AppendConsoleText(string text, bool isError)
     {
-        // Simple append — TextBox does not support per-run coloring, so errors get a prefix
+        // Simple append - TextBox does not support per-run coloring, so errors get a prefix
         ConsoleOutput.AppendText(isError ? $"[ERR] {text}" : text);
         ConsoleScroller.ScrollToBottom();
     }

@@ -5,7 +5,7 @@ namespace RemoteAdminTool.RelayServer;
 /// <summary>
 /// Bidirectional relay between an admin and a host during an active session.
 /// Forwards FrameData from host → admin, and input messages from admin → host.
-/// This is a pure pass-through — no processing, just shuttling bytes.
+/// This is a pure pass-through - no processing, just shuttling bytes.
 /// </summary>
 public sealed class SessionRelay
 {
@@ -60,7 +60,7 @@ public sealed class SessionRelay
         }
         catch (OperationCanceledException)
         {
-            // Session was stopped — normal
+            // Session was stopped - normal
         }
         catch (Exception ex)
         {

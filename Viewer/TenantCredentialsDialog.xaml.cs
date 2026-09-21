@@ -30,7 +30,7 @@ public partial class TenantCredentialsDialog : Window
         string licenseKey, string adminToken, string hostToken)
     {
         var dlg = new TenantCredentialsDialog { Owner = owner };
-        dlg.TitleRun.Text = $"Credentials — {displayName}";
+        dlg.TitleRun.Text = $"Credentials - {displayName}";
         dlg.SubtitleText.Text =
             "These are the stored credentials for this sub-admin tenant.";
         dlg.Load(tenantId, licenseKey, adminToken, hostToken);

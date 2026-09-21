@@ -24,7 +24,7 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
-# Render injects PORT env var — our app reads it as RAT_PORT
+# Render injects PORT env var - our app reads it as RAT_PORT
 # Default to 10000 which is Render's expected port
 ENV RAT_PORT=10000
 ENV RAT_TLS=false

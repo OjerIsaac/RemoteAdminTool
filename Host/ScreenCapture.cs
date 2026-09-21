@@ -4,7 +4,7 @@ using System.Drawing.Imaging;
 namespace RemoteAdminTool.Host;
 
 /// <summary>
-/// GDI-based screen capture — simple, reliable fallback that works everywhere.
+/// GDI-based screen capture - simple, reliable fallback that works everywhere.
 /// For higher frame rates, use DxgiScreenCapture when available.
 /// Now supports multi-monitor selection.
 /// </summary>

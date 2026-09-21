@@ -6,9 +6,9 @@ namespace RemoteAdminTool.RelayServer;
 /// <summary>
 /// Tracks machine IDs that have ever successfully registered under a tenant.
 /// Used for two purposes:
-///   1. Seat counting — prevents rogue hosts from registering new machine IDs
+///   1. Seat counting - prevents rogue hosts from registering new machine IDs
 ///      beyond the tenant's MaxHosts limit.
-///   2. Audit trail — shows all machines that have ever connected.
+///   2. Audit trail - shows all machines that have ever connected.
 /// </summary>
 public sealed class RegisteredHost
 {

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using RemoteAdminTool.Host;
 
-// ---- Serilog structured logging (file only — no console window in WinExe) ----
+// ---- Serilog structured logging (file only - no console window in WinExe) ----
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .WriteTo.File(
@@ -61,12 +61,12 @@ try
 
         if (string.IsNullOrEmpty(licenseKey))
         {
-            // No valid license — show a tray error and exit.
+            // No valid license - show a tray error and exit.
             // The relay would reject this anyway, but we fail fast here for clarity.
             Log.Error("host.key is missing or empty in {Dir}. Host cannot start without a valid license key.", AppContext.BaseDirectory);
             System.Windows.Forms.MessageBox.Show(
                 "host.key is missing or invalid.\n\nPlease contact your administrator.",
-                "RemoteAdmin Host — License Error",
+                "RemoteAdmin Host - License Error",
                 System.Windows.Forms.MessageBoxButtons.OK,
                 System.Windows.Forms.MessageBoxIcon.Error);
             return;
@@ -76,18 +76,18 @@ try
         var updated = await AutoUpdater.CheckAndUpdateAsync(HostConstants.RelayHttpUrl, HostConstants.AppVersion);
         if (updated)
         {
-            // A replacement process has been launched — exit this one cleanly
+            // A replacement process has been launched - exit this one cleanly
             await Log.CloseAndFlushAsync();
             return;
         }
 
-        // RelayUrl, HostToken are compiled constants — not readable as plain text
+        // RelayUrl, HostToken are compiled constants - not readable as plain text
         var relayUrl   = HostConstants.RelayUrl;
         var authToken  = HostConstants.HostToken;
         var machineName = config["MachineName"] ?? Environment.MachineName;
         var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
 
-        // MachineId is derived from hardware (CPU + mobo serial + MAC) — cannot be spoofed by copying a file
+        // MachineId is derived from hardware (CPU + mobo serial + MAC) - cannot be spoofed by copying a file
         var machineId = await HardwareFingerprint.ComputeAsync();
         Log.Information("Hardware MachineId: {MachineId}", machineId);
 

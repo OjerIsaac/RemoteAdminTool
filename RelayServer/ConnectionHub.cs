@@ -15,7 +15,7 @@ namespace RemoteAdminTool.RelayServer;
 ///   - The super admin (matching SuperAdminToken) sees ALL tenants and ALL hosts.
 ///   - Super admin can create/suspend/resume tenants and get the full tenant list.
 /// 
-/// Sessions are per-tenant — an admin can only start a session with a host in their tenant.
+/// Sessions are per-tenant - an admin can only start a session with a host in their tenant.
 /// </summary>
 public sealed class ConnectionHub
 {
@@ -114,7 +114,7 @@ public sealed class ConnectionHub
 
         if (knownHost is null)
         {
-            // New machine — check seat limit before allowing it
+            // New machine - check seat limit before allowing it
             if (tenant.MaxHosts > 0)
             {
                 var currentCount = await db.RegisteredHosts
@@ -146,7 +146,7 @@ public sealed class ConnectionHub
         }
         else
         {
-            // Known machine — check if it's been banned
+            // Known machine - check if it's been banned
             if (!knownHost.IsAllowed)
             {
                 var reject = new HostRegisterAckMessage(false, "This machine has been blocked by the admin.");
@@ -368,7 +368,7 @@ public sealed class ConnectionHub
 
         if (admin.IsSuperAdmin)
         {
-            // Super admin can connect to any host — search all tenants
+            // Super admin can connect to any host - search all tenants
             foreach (var (_, pool) in _tenantHosts)
             {
                 if (pool.ContainsKey(machineId)) { hosts = pool; break; }

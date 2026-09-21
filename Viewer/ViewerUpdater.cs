@@ -16,7 +16,7 @@ public static class ViewerUpdater
 
     /// <summary>
     /// Call this once on application startup.
-    /// Returns true if an update was applied — caller must shut down the WPF app immediately.
+    /// Returns true if an update was applied - caller must shut down the WPF app immediately.
     /// </summary>
     public static async Task<bool> CheckAndUpdateAsync(string relayHttpUrl, string currentVersion)
     {
@@ -67,7 +67,7 @@ public static class ViewerUpdater
         {
             var actualHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
             if (!string.Equals(actualHash, expectedSha256.ToLowerInvariant(), StringComparison.Ordinal))
-                return; // Hash mismatch — silently abort
+                return; // Hash mismatch - silently abort
         }
 
         await File.WriteAllBytesAsync(newPath, bytes);
