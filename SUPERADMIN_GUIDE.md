@@ -110,17 +110,21 @@ The dialog shows four values. Copy them now:
 5. Wait about 1 minute while it builds
 6. When done, the script prints a **SHA-256 hash** - copy it! (you need it in Step 4)
 
-Output files:
+Output files (all three in `Host\dist\`):
 ```
-Host\dist\Host.exe   ← the agent binary (unique per tenant)
-Host\dist\host.key   ← hashed license key (safe to leave on disk)
+Host\dist\Host.exe    <- the agent binary (SAME for every sub-admin)
+Host\dist\host.key    <- hashed license key (unique to this sub-admin)
+Host\dist\host.token  <- auth token        (unique to this sub-admin)
 ```
+
+> `Host.exe` is now a generic binary - it reads the tenant identity from `host.key` and `host.token` at runtime. This means ALL sub-admins share the same EXE and the same SHA-256 hash.
 
 ### Step 4 - Update Render with the SHA-256 hash
 
-The hash prevents tampered updates from being installed on sub-admin machines.
-
-> **Do this every time you build a new Host.exe.** The script always prints the hash - just copy and paste it.
+> **When to do this:**
+> - **Adding your FIRST sub-admin** → YES, do this now
+> - **Adding more sub-admins later** → SKIP - the hash doesn't change (same Host.exe)
+> - **Publishing a new version of Host.exe** → YES, update the hash (Part 6)
 
 1. Go to [render.com](https://render.com) -> your relay web service -> **Environment** tab
 2. Add/update:
@@ -129,7 +133,7 @@ The hash prevents tampered updates from being installed on sub-admin machines.
    ```
 3. Click **Save Changes** - Render redeploys (~2 min)
 
-> **Not using auto-update yet?** If `HOST_DOWNLOAD_URL` is blank in Render, you can skip this step for now - clients won't check for updates. Come back to it when you set up GitHub Releases (Part 6).
+> **Not using auto-update yet?** If `HOST_DOWNLOAD_URL` is blank in Render, skip this entirely - clients won't check for updates. Come back to it when you set up GitHub Releases (Part 6).
 
 ### Step 5 - What to send the sub-admin
 
