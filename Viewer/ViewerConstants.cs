@@ -1,4 +1,4 @@
-namespace RemoteAdminTool.Viewer;
+﻿namespace RemoteAdminTool.Viewer;
 
 /// <summary>
 /// Compiled-in constants for the Viewer.
@@ -9,6 +9,6 @@ internal static class ViewerConstants
 {
     public const string RelayUrl     = "wss://remoteadmintool.onrender.com/relay";
     public const string RelayHttpUrl = "https://remoteadmintool.onrender.com";
-    public const string HostToken    = "";   // patched by build.ps1 from Auth__HostToken in .env
+    public const string HostToken    = "d6a6ac2563a8443ea686346c";
     public const string AppVersion   = "1.0.0";
 }
