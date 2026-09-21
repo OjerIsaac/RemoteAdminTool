@@ -55,15 +55,11 @@ try
         var keyFile    = Path.Combine(AppContext.BaseDirectory, "host.key");
         var licenseKey = string.Empty;
         if (File.Exists(keyFile))
-        {
             licenseKey = (await File.ReadAllTextAsync(keyFile)).Trim();
-        }
 
         if (string.IsNullOrEmpty(licenseKey))
         {
-            // No valid license - show a tray error and exit.
-            // The relay would reject this anyway, but we fail fast here for clarity.
-            Log.Error("host.key is missing or empty in {Dir}. Host cannot start without a valid license key.", AppContext.BaseDirectory);
+            Log.Error("host.key is missing or empty in {Dir}.", AppContext.BaseDirectory);
             System.Windows.Forms.MessageBox.Show(
                 "host.key is missing or invalid.\n\nPlease contact your administrator.",
                 "RemoteAdmin Host - License Error",
@@ -72,19 +68,33 @@ try
             return;
         }
 
+        // ---- Read HostToken from host.token (sits next to Host.exe, per-tenant) ----
+        var tokenFile  = Path.Combine(AppContext.BaseDirectory, "host.token");
+        var authToken  = string.Empty;
+        if (File.Exists(tokenFile))
+            authToken = (await File.ReadAllTextAsync(tokenFile)).Trim();
+
+        if (string.IsNullOrEmpty(authToken))
+        {
+            Log.Error("host.token is missing or empty in {Dir}.", AppContext.BaseDirectory);
+            System.Windows.Forms.MessageBox.Show(
+                "host.token is missing or invalid.\n\nPlease contact your administrator.",
+                "RemoteAdmin Host - License Error",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Error);
+            return;
+        }
+
         // ---- Auto-update check ----
-        var updated = await AutoUpdater.CheckAndUpdateAsync(HostConstants.RelayHttpUrl, HostConstants.AppVersion);
+        var updated = await AutoUpdater.CheckAndUpdateAsync(HostConstants.RelayHttpUrl, HostConstants.AppVersion, authToken);
         if (updated)
         {
-            // A replacement process has been launched - exit this one cleanly
             await Log.CloseAndFlushAsync();
             return;
         }
 
-        // RelayUrl, HostToken are compiled constants - not readable as plain text
-        var relayUrl   = HostConstants.RelayUrl;
-        var authToken  = HostConstants.HostToken;
-        var machineName = config["MachineName"] ?? Environment.MachineName;
+        var relayUrl       = HostConstants.RelayUrl;
+        var machineName    = config["MachineName"] ?? Environment.MachineName;
         var unattendedMode = bool.TryParse(config["UnattendedMode"], out var ua) && ua;
 
         // MachineId is derived from hardware (CPU + mobo serial + MAC) - cannot be spoofed by copying a file

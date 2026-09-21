@@ -31,16 +31,23 @@ public sealed class HostBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // RelayUrl and HostToken are compiled constants; LicenseKey is read from host.key
+        // RelayUrl is a compiled constant; LicenseKey and HostToken are read from sidecar files
         var relayUrl   = HostConstants.RelayUrl;
-        var authToken  = HostConstants.HostToken;
         var keyFile    = Path.Combine(AppContext.BaseDirectory, "host.key");
-        var licenseKey = File.Exists(keyFile) ? (await File.ReadAllTextAsync(keyFile)).Trim() : string.Empty;
+        var tokenFile  = Path.Combine(AppContext.BaseDirectory, "host.token");
+        var licenseKey = File.Exists(keyFile)   ? (await File.ReadAllTextAsync(keyFile)).Trim()   : string.Empty;
+        var authToken  = File.Exists(tokenFile) ? (await File.ReadAllTextAsync(tokenFile)).Trim() : string.Empty;
 
         if (string.IsNullOrEmpty(licenseKey))
         {
-            _logger.LogCritical("host.key is missing or empty in {Dir}. Host cannot start without a valid license key.", AppContext.BaseDirectory);
-            return; // Stop the service
+            _logger.LogCritical("host.key is missing or empty in {Dir}.", AppContext.BaseDirectory);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(authToken))
+        {
+            _logger.LogCritical("host.token is missing or empty in {Dir}.", AppContext.BaseDirectory);
+            return;
         }
 
         var machineName = _config["MachineName"] ?? Environment.MachineName;

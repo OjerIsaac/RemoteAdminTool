@@ -133,16 +133,19 @@ The hash prevents tampered updates from being installed on sub-admin machines.
 
 ### Step 5 - What to send the sub-admin
 
-Send the sub-admin **four things**:
+Send the sub-admin **five things**:
 
 | What | Where to find it | Purpose |
 |------|-----------------|---------|
 | **Host.exe** | `Host\dist\Host.exe` | They distribute this to every PC they want to control |
-| **host.key** | `Host\dist\host.key` | Their hashed license - must stay in the same folder as Host.exe |
+| **host.key** | `Host\dist\host.key` | Hashed license - must stay in the same folder as Host.exe |
+| **host.token** | `Host\dist\host.token` | Auth token - must stay in the same folder as Host.exe |
 | **Admin Token** | From the credentials dialog (Step 2) | They paste this into Viewer.exe to log in |
 | **Viewer.exe** | `Viewer\dist\Viewer.exe` | Same app you use - works for sub-admins too |
 
-> **Critical:** `Host.exe` and `host.key` must always be in the same folder on every end-user machine. If `host.key` is missing, `Host.exe` will exit immediately.
+> **Critical:** `Host.exe`, `host.key`, and `host.token` must always be in the same folder on every end-user machine. If either file is missing, `Host.exe` will exit immediately with an error.
+
+> **Good news on auto-update:** Because `Host.exe` is now a generic binary (no token compiled in), all sub-admins share the same EXE. One `HOST_EXE_SHA256` in Render covers everyone. Only `host.key` and `host.token` are tenant-specific and they are NEVER replaced by auto-update.
 
 ---
 
@@ -161,8 +164,8 @@ Tell your sub-admin exactly this:
 
 ### To install Host.exe on a PC
 
-1. Copy **both** `Host.exe` and `host.key` to the PC (USB, email, shared drive - any way)
-2. Keep both files in the **same folder**
+1. Copy **all three files** - `Host.exe`, `host.key`, and `host.token` - to the PC (USB, email, shared drive - any way)
+2. Keep all three files in the **same folder**
 3. Double-click **Host.exe** - it starts immediately and sits silently in the system tray
 4. Optional: to auto-start on boot, right-click `Host.exe` → Create Shortcut → paste the shortcut into:
    `C:\Users\<username>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup`

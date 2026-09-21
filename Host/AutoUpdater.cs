@@ -18,7 +18,7 @@ public static class AutoUpdater
     /// Call this once at startup before doing any real work.
     /// Returns true if the process is being replaced - caller must exit immediately.
     /// </summary>
-    public static async Task<bool> CheckAndUpdateAsync(string relayHttpUrl, string currentVersion)
+    public static async Task<bool> CheckAndUpdateAsync(string relayHttpUrl, string currentVersion, string authToken)
     {
         try
         {
@@ -27,7 +27,7 @@ public static class AutoUpdater
             var versionUrl = $"{relayHttpUrl.TrimEnd('/')}/api/version";
 
             using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, versionUrl);
-            request.Headers.TryAddWithoutValidation("X-Host-Token", HostConstants.HostToken);
+            request.Headers.TryAddWithoutValidation("X-Host-Token", authToken);
 
             using var response = await _http.SendAsync(request);
             if (!response.IsSuccessStatusCode)
