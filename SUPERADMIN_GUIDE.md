@@ -1,4 +1,4 @@
-# RemoteAdminTool — Super Admin Operations Guide
+﻿# RemoteAdminTool - Super Admin Operations Guide
 
 This guide tells you exactly what to do, step by step, with no coding required.
 Keep it open whenever you are operating the software.
@@ -18,7 +18,7 @@ Four components, three audiences:
 
 ---
 
-## Part 1: Your Daily App — Viewer.exe
+## Part 1: Your Daily App - Viewer.exe
 
 ### Opening it
 
@@ -30,7 +30,7 @@ To (re)publish it: `.\build.ps1 -PublishViewer`
 1. In the **Admin Token** field, paste your super admin token (from `.env` → `Auth__SuperAdminToken`)
 2. Leave **License Key** completely blank
 3. Click **Connect to Relay**
-4. You are now connected — the **Tenants** tab appears. Sub-admins do NOT see this tab.
+4. You are now connected - the **Tenants** tab appears. Sub-admins do NOT see this tab.
 
 ### Logging out
 
@@ -38,15 +38,15 @@ Click the red **Logout** button in the top-left bar at any time to disconnect cl
 
 ### What you can do once connected
 
-- **Nodes tab** — Every host machine from every sub-admin currently online
-- **Tenants tab** — Manage sub-admins (create, view credentials, suspend, resume)
-- **Click any node** — Start a remote session instantly
+- **Nodes tab** - Every host machine from every sub-admin currently online
+- **Tenants tab** - Manage sub-admins (create, view credentials, suspend, resume)
+- **Click any node** - Start a remote session instantly
 
 ### Remote session tabs
 
 | Tab | What it shows |
 |-----|---------------|
-| **🖥 Screen** | Live remote desktop — full mouse and keyboard control |
+| **🖥 Screen** | Live remote desktop - full mouse and keyboard control |
 | **⚡ Console** | Interactive PowerShell terminal on the remote machine |
 | **📊 Monitor** | Live CPU, RAM, disk, network stats + top processes |
 
@@ -56,35 +56,35 @@ Click the red **Logout** button in the top-left bar at any time to disconnect cl
 
 Do this whenever a new sub-admin joins your platform.
 
-### Step 1 — Create the tenant in the Viewer
+### Step 1 - Create the tenant in the Viewer
 
 1. Open Viewer.exe and log in as super admin
 2. Click the **Tenants** tab
 3. Click **+ New**
 4. Type the sub-admin's name and email → click **Create Tenant**
-5. A credentials dialog appears — **do not close it yet**
+5. A credentials dialog appears - **do not close it yet**
 
-### Step 2 — Copy the credentials
+### Step 2 - Copy the credentials
 
 The dialog shows four values. Copy them now:
 
 | Field | Copy it to... |
 |-------|--------------|
-| **License Key** | Paste into Notepad — you'll need it in Step 3 |
-| **Host Token** | Paste into Notepad — you'll also need it in Step 3 |
+| **License Key** | Paste into Notepad - you'll need it in Step 3 |
+| **Host Token** | Paste into Notepad - you'll also need it in Step 3 |
 | **Admin Token** | Save this to give to the sub-admin |
-| **Tenant ID** | Reference only — not needed for normal operations |
+| **Tenant ID** | Reference only - not needed for normal operations |
 
 > You can get these again at any time: Tenants tab → **Details** next to the sub-admin.
 
-### Step 3 — Build Host.exe for this sub-admin
+### Step 3 - Build Host.exe for this sub-admin
 
 1. Go to your project folder: `C:\c#-projects\RemoteAdminTool\`
 2. Double-click **BuildHostForSubAdmin.bat**
 3. When prompted, paste the **License Key** → press **Enter**
 4. When prompted, paste the **Host Token** → press **Enter**
 5. Wait about 1 minute while it builds
-6. When done, the script prints a **SHA-256 hash** — copy it! (you need it in Step 4)
+6. When done, the script prints a **SHA-256 hash** - copy it! (you need it in Step 4)
 
 Output files:
 ```
@@ -92,7 +92,7 @@ Host\dist\Host.exe   ← the agent binary (unique per tenant)
 Host\dist\host.key   ← hashed license key (safe to leave on disk)
 ```
 
-### Step 4 — Set the SHA-256 hash in Render (first time only)
+### Step 4 - Set the SHA-256 hash in Render (first time only)
 
 The hash prevents tampered updates from being installed.
 
@@ -101,20 +101,20 @@ The hash prevents tampered updates from being installed.
    ```
    HOST_EXE_SHA256 = <paste the hash the script just printed>
    ```
-3. Click **Save Changes** — Render redeploys (~2 min)
+3. Click **Save Changes** - Render redeploys (~2 min)
 
 > Skip this step if you are not using auto-update yet. Set `HOST_DOWNLOAD_URL` to blank in Render and the relay will not push updates.
 
-### Step 5 — What to send the sub-admin
+### Step 5 - What to send the sub-admin
 
 Send the sub-admin **four things**:
 
 | What | Where to find it | Purpose |
 |------|-----------------|---------| 
 | **Host.exe** | `Host\dist\Host.exe` | They distribute this to every PC they want to control |
-| **host.key** | `Host\dist\host.key` | Their hashed license — must stay in the same folder as Host.exe |
+| **host.key** | `Host\dist\host.key` | Their hashed license - must stay in the same folder as Host.exe |
 | **Admin Token** | From the credentials dialog (Step 2) | They paste this into Viewer.exe to log in |
-| **Viewer.exe** | `Viewer\dist\Viewer.exe` | Same app you use — works for sub-admins too |
+| **Viewer.exe** | `Viewer\dist\Viewer.exe` | Same app you use - works for sub-admins too |
 
 > **Critical:** `Host.exe` and `host.key` must always be in the same folder on every end-user machine. If `host.key` is missing, `Host.exe` will exit immediately.
 
@@ -135,9 +135,9 @@ Tell your sub-admin exactly this:
 
 ### To install Host.exe on a PC
 
-1. Copy **both** `Host.exe` and `host.key` to the PC (USB, email, shared drive — any way)
+1. Copy **both** `Host.exe` and `host.key` to the PC (USB, email, shared drive - any way)
 2. Keep both files in the **same folder**
-3. Double-click **Host.exe** — it starts immediately and sits silently in the system tray
+3. Double-click **Host.exe** - it starts immediately and sits silently in the system tray
 4. Optional: to auto-start on boot, right-click `Host.exe` → Create Shortcut → paste the shortcut into:
    `C:\Users\<username>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup`
 
@@ -146,7 +146,7 @@ Tell your sub-admin exactly this:
 1. Log into Viewer.exe
 2. The machine appears in the Nodes list (Host.exe must be running on it)
 3. Click the machine → it connects automatically
-4. A consent dialog appears on the user's screen — they click **Allow**
+4. A consent dialog appears on the user's screen - they click **Allow**
 5. The remote session starts
 
 ---
@@ -158,14 +158,14 @@ If you need to rebuild a Host EXE or share the Admin Token again:
 1. Open Viewer.exe → log in as super admin
 2. Click **Tenants** tab
 3. Click **Details** next to the sub-admin
-4. The credentials dialog opens — copy buttons for all four values (License Key, Host Token, Admin Token, Tenant ID)
+4. The credentials dialog opens - copy buttons for all four values (License Key, Host Token, Admin Token, Tenant ID)
 
 ---
 
 ## Part 5: Suspending / Resuming a Sub-Admin
 
-- **Suspend** — blocks their Host machines from connecting (e.g. non-payment)
-- **Resume** — re-activates them
+- **Suspend** - blocks their Host machines from connecting (e.g. non-payment)
+- **Resume** - re-activates them
 
 1. Tenants tab → find the sub-admin
 2. Click **Suspend** or **Resume**
@@ -174,7 +174,7 @@ If you need to rebuild a Host EXE or share the Admin Token again:
 
 ## Part 6: Pushing Updates to Host.exe (Auto-Update)
 
-When you release a new version, every existing installation updates itself silently on next startup — no resharing required.
+When you release a new version, every existing installation updates itself silently on next startup - no resharing required.
 
 ### How auto-update works (so you understand the variables)
 
@@ -188,11 +188,11 @@ Every time `Host.exe` starts, it calls your relay at `/api/version`. The relay r
 
 The client compares `HOST_VERSION` to its own compiled-in version. If the relay version is higher, it downloads from `HOST_DOWNLOAD_URL`, verifies the hash, then replaces itself.
 
-> **If `HOST_DOWNLOAD_URL` is blank**, the relay omits update info entirely — clients don't try to update and no error occurs. Use this when you haven't set up GitHub Releases yet.
+> **If `HOST_DOWNLOAD_URL` is blank**, the relay omits update info entirely - clients don't try to update and no error occurs. Use this when you haven't set up GitHub Releases yet.
 
 ---
 
-### Step 1 — Bump the version
+### Step 1 - Bump the version
 
 Open `.env` and increase `HOST_VERSION`:
 ```ini
@@ -203,7 +203,7 @@ Also bump it in Render later (Step 4). Both must match your new version.
 
 ---
 
-### Step 2 — Build the new Host.exe
+### Step 2 - Build the new Host.exe
 
 Run `BuildHostForSubAdmin.bat` with **any** existing tenant's credentials. Or use build.ps1 directly:
 ```powershell
@@ -211,7 +211,7 @@ Run `BuildHostForSubAdmin.bat` with **any** existing tenant's credentials. Or us
 ```
 This produces `Host\dist\Host.exe`.
 
-> For auto-update purposes, the new `Host.exe` works for **all tenants** once downloaded — the new binary re-reads `host.key` from disk. You only need to build once.
+> For auto-update purposes, the new `Host.exe` works for **all tenants** once downloaded - the new binary re-reads `host.key` from disk. You only need to build once.
 
 At the end, the script prints:
 ```
@@ -220,18 +220,18 @@ Host EXE -> Host\dist\Host.exe
 SHA-256 (paste into Render env var HOST_EXE_SHA256):
   a3f8c2d91e0b4c7f...  (64 hex characters)
 ```
-**Copy this hash — you need it in Step 4.**
+**Copy this hash - you need it in Step 4.**
 
 ---
 
-### Step 3 — Upload to GitHub Releases and get the download URL
+### Step 3 - Upload to GitHub Releases and get the download URL
 
 The `HOST_DOWNLOAD_URL` is the **direct download link** to your `Host.exe` file on GitHub Releases. Here's how to get it:
 
 1. Go to your GitHub repo → click **Releases** (right side of the page)
 2. Click **Draft a new release**
 3. Click **Choose a tag** → type `v1.0.1` → click **Create new tag: v1.0.1**
-4. Give it a title (e.g. `v1.0.1 — Host update`)
+4. Give it a title (e.g. `v1.0.1 - Host update`)
 5. Under **Attach binaries**, drag and drop `Host\dist\Host.exe`
 6. Click **Publish release**
 7. After publishing, find `Host.exe` listed under **Assets** → right-click it → **Copy link address**
@@ -246,17 +246,17 @@ For example:
 https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Host.exe
 ```
 
-That link is your `HOST_DOWNLOAD_URL`. It is permanent — it never changes for that release.
+That link is your `HOST_DOWNLOAD_URL`. It is permanent - it never changes for that release.
 
 > **Important:** Do NOT use the GitHub repo homepage URL or a commit URL. It must be the direct `/releases/download/` link.
 
 ---
 
-### Step 4 — Update ALL four Render env vars (do all four together)
+### Step 4 - Update ALL four Render env vars (do all four together)
 
 Go to [render.com](https://render.com) → your relay web service → **Environment** tab.
 
-Update these four variables at the same time — they must all match each other:
+Update these four variables at the same time - they must all match each other:
 
 ```
 HOST_VERSION      = 1.0.1
@@ -264,7 +264,7 @@ HOST_DOWNLOAD_URL = https://github.com/OjerIsaac/RemoteAdminTool/releases/downlo
 HOST_EXE_SHA256   = a3f8c2d91e0b4c7f...  ← from Step 2
 ```
 
-Click **Save Changes** — Render redeploys automatically (~2 min).
+Click **Save Changes** - Render redeploys automatically (~2 min).
 
 > **Why must all three match?**  
 > - If `HOST_VERSION` is old, clients won't think there's an update.  
@@ -273,15 +273,15 @@ Click **Save Changes** — Render redeploys automatically (~2 min).
 
 ---
 
-### Step 5 — Done
+### Step 5 - Done
 
 On next startup, every running `Host.exe` will:
 1. Call `/api/version` (authenticated with its baked-in token)
 2. See `HOST_VERSION` is higher than its own version
 3. Download the file at `HOST_DOWNLOAD_URL`
 4. Compute the SHA-256 of the downloaded file and compare to `HOST_EXE_SHA256`
-5. If they match — replace itself and restart silently
-6. If they don't match — abort, keep running old version, try again next startup
+5. If they match - replace itself and restart silently
+6. If they don't match - abort, keep running old version, try again next startup
 
 > **Note:** `host.key` is NEVER replaced during auto-update. Each machine keeps its original `host.key` forever.
 
@@ -291,43 +291,43 @@ On next startup, every running `Host.exe` will:
 
 | When | What to do with `HOST_DOWNLOAD_URL` |
 |------|---------------------------------|
-| Haven't set up GitHub Releases yet | Leave blank — auto-update is disabled, no error |
+| Haven't set up GitHub Releases yet | Leave blank - auto-update is disabled, no error |
 | First time publishing a release | Paste the GitHub Releases link → also set `HOST_VERSION` and `HOST_EXE_SHA256` |
 | New version released | Update the URL to the new release tag (e.g. `.../v1.0.2/Host.exe`) |
-| URL is set but `HOST_VERSION` wasn't bumped | Clients won't download — they think they're already up to date |
-| URL is set but `HOST_EXE_SHA256` is wrong | Clients download but reject the file — stays on old version |
+| URL is set but `HOST_VERSION` wasn't bumped | Clients won't download - they think they're already up to date |
+| URL is set but `HOST_EXE_SHA256` is wrong | Clients download but reject the file - stays on old version |
 
 ---
 
 
 ## Part 7: Pushing Updates to Viewer.exe (Auto-Update)
 
-Same process as Host. The variables are the same pattern — just `VIEWER_` instead of `HOST_`.
+Same process as Host. The variables are the same pattern - just `VIEWER_` instead of `HOST_`.
 
-### Step 1 — Bump the version
+### Step 1 - Bump the version
 
 In `.env`:
 ```ini
 VIEWER_VERSION=1.0.1
 ```
 
-### Step 2 — Build the new Viewer.exe
+### Step 2 - Build the new Viewer.exe
 
 ```powershell
 .\build.ps1 -PublishViewer
 ```
 Output: `Viewer\dist\Viewer.exe`
 
-The script prints the SHA-256 hash at the end — copy it.
+The script prints the SHA-256 hash at the end - copy it.
 
-### Step 3 — Upload to GitHub Releases and get the download URL
+### Step 3 - Upload to GitHub Releases and get the download URL
 
 Same steps as Part 6 Step 3, but upload `Viewer\dist\Viewer.exe`.
 
 You can attach **both** `Host.exe` and `Viewer.exe` to the same release tag if both changed:
 - Drag `Host\dist\Host.exe` → assets
 - Drag `Viewer\dist\Viewer.exe` → assets
-- Click Publish — you get two separate permanent links
+- Click Publish - you get two separate permanent links
 
 Viewer URL format:
 ```
@@ -336,7 +336,7 @@ https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
 
 Right-click `Viewer.exe` under Assets → **Copy link address** to get `VIEWER_DOWNLOAD_URL`.
 
-### Step 4 — Update ALL three Render env vars
+### Step 4 - Update ALL three Render env vars
 
 ```
 VIEWER_VERSION      = 1.0.1
@@ -348,7 +348,7 @@ Save → Render redeploys → sub-admins' Viewer.exe silently updates itself on 
 
 ---
 
-## All Render Env Vars — Complete Reference
+## All Render Env Vars - Complete Reference
 
 This is every variable the relay reads. Keep this as your master checklist.
 
@@ -356,8 +356,8 @@ This is every variable the relay reads. Keep this as your master checklist.
 
 | Variable | Example value | What it does |
 |----------|--------------|------------- |
-| `Auth__SuperAdminToken` | `f7941a09575e...` | Your super admin login token — keep secret |
-| `Auth__HostToken` | `d6a6ac2563a8...` | Global host auth token — also compiled into Viewer |
+| `Auth__SuperAdminToken` | `f7941a09575e...` | Your super admin login token - keep secret |
+| `Auth__HostToken` | `d6a6ac2563a8...` | Global host auth token - also compiled into Viewer |
 | `DATABASE_URL` | `postgresql://...` | Auto-set by Render when you link a Postgres DB |
 | `RELAY_URL` | `wss://remoteadmintool.onrender.com/relay` | Used by build.ps1 to patch into client EXEs |
 
@@ -365,9 +365,9 @@ This is every variable the relay reads. Keep this as your master checklist.
 
 | Variable | When to update | What happens if wrong or blank |
 |----------|---------------|-------------------------------|
-| `HOST_VERSION` | Every Host.exe release | If stale — clients think they're up to date, skip download |
-| `HOST_DOWNLOAD_URL` | Every Host.exe release | If blank — auto-update disabled (no error). If wrong URL — download fails silently |
-| `HOST_EXE_SHA256` | Every Host.exe release | If stale — clients reject the download, stay on old version |
+| `HOST_VERSION` | Every Host.exe release | If stale - clients think they're up to date, skip download |
+| `HOST_DOWNLOAD_URL` | Every Host.exe release | If blank - auto-update disabled (no error). If wrong URL - download fails silently |
+| `HOST_EXE_SHA256` | Every Host.exe release | If stale - clients reject the download, stay on old version |
 | `VIEWER_VERSION` | Every Viewer.exe release | Same as HOST_VERSION |
 | `VIEWER_DOWNLOAD_URL` | Every Viewer.exe release | Same as HOST_DOWNLOAD_URL |
 | `VIEWER_EXE_SHA256` | Every Viewer.exe release | Same as HOST_EXE_SHA256 |
@@ -399,15 +399,15 @@ https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
 |-----------|------------------|
 | New Host.exe build | `HOST_VERSION` + `HOST_DOWNLOAD_URL` + `HOST_EXE_SHA256` |
 | New Viewer.exe build | `VIEWER_VERSION` + `VIEWER_DOWNLOAD_URL` + `VIEWER_EXE_SHA256` |
-| Relay server code only | Nothing — EXEs didn't change |
+| Relay server code only | Nothing - EXEs didn't change |
 | New sub-admin (new Host.exe) | `HOST_EXE_SHA256` only (version/URL stay same unless it's a new release) |
 
 ---
 
 
-## Part 8: The SHA-256 Hash — When to Update It
+## Part 8: The SHA-256 Hash - When to Update It
 
-The SHA-256 hash is a fingerprint of your EXE file. Clients check it before installing any update — if the file doesn't match the hash you set in Render, they refuse to install it. This stops anyone tampering with the download.
+The SHA-256 hash is a fingerprint of your EXE file. Clients check it before installing any update - if the file doesn't match the hash you set in Render, they refuse to install it. This stops anyone tampering with the download.
 
 ### Simple rule
 
@@ -415,18 +415,18 @@ The SHA-256 hash is a fingerprint of your EXE file. Clients check it before inst
 
 ### When does the hash change?
 
-The hash changes **only when the binary changes** — i.e. every time you run `build.ps1 -PublishHostForTenant` or `build.ps1 -PublishViewer`. Two builds of the same source code produce different hashes because the compiler embeds timestamps.
+The hash changes **only when the binary changes** - i.e. every time you run `build.ps1 -PublishHostForTenant` or `build.ps1 -PublishViewer`. Two builds of the same source code produce different hashes because the compiler embeds timestamps.
 
-### Decision table — should I update the hash right now?
+### Decision table - should I update the hash right now?
 
 | Situation | Do I update `HOST_EXE_SHA256`? |
 |-----------|-------------------------------|
-| I just ran `build.ps1` and published a new Host.exe | **YES** — copy the hash the script printed and paste it into Render |
-| I just ran `build.ps1 -PublishViewer` | **YES** — update `VIEWER_EXE_SHA256` in Render |
-| I pushed relay server code only (`git push`) | **NO** — the EXE didn't change, hash stays the same |
-| I created a new sub-admin and built their Host.exe | **YES** — the EXE changed, update `HOST_EXE_SHA256` |
-| I haven't set up auto-update yet (URL is blank) | **SKIP** — leave hash blank, clients won't try to update |
-| I forgot to update the hash after publishing | **Fix it now** — go to Render, paste the correct hash, save. Clients will retry on next startup. |
+| I just ran `build.ps1` and published a new Host.exe | **YES** - copy the hash the script printed and paste it into Render |
+| I just ran `build.ps1 -PublishViewer` | **YES** - update `VIEWER_EXE_SHA256` in Render |
+| I pushed relay server code only (`git push`) | **NO** - the EXE didn't change, hash stays the same |
+| I created a new sub-admin and built their Host.exe | **YES** - the EXE changed, update `HOST_EXE_SHA256` |
+| I haven't set up auto-update yet (URL is blank) | **SKIP** - leave hash blank, clients won't try to update |
+| I forgot to update the hash after publishing | **Fix it now** - go to Render, paste the correct hash, save. Clients will retry on next startup. |
 
 ### Step-by-step reminder (already covered in Parts 6 & 7, summarised here)
 
@@ -437,10 +437,10 @@ The hash changes **only when the binary changes** — i.e. every time you run `b
 5. Save → Render redeploys → clients pick up the update on next startup
 
 > **What happens if I forget?**  
-> Clients download the new EXE, check the hash, find it doesn't match the (old) hash in Render, and **silently abort** — they keep running the old version. Nothing breaks, but they don't update. Fix it by pasting the correct hash into Render.
+> Clients download the new EXE, check the hash, find it doesn't match the (old) hash in Render, and **silently abort** - they keep running the old version. Nothing breaks, but they don't update. Fix it by pasting the correct hash into Render.
 
 > **What if I leave the hash blank?**  
-> Hash verification is skipped entirely — the update is applied without checking. This is safe for initial setup before you have a hash, but you should fill it in once you start shipping real updates.
+> Hash verification is skipped entirely - the update is applied without checking. This is safe for initial setup before you have a hash, but you should fill it in once you start shipping real updates.
 
 ---
 
@@ -463,11 +463,11 @@ Render automatically redeploys. Takes about 2 minutes. Schema migrations run aut
 | Protection | What it does |
 |-----------|--------------|
 | **Per-tenant Host Token** | Each sub-admin's `Host.exe` carries a unique token. Even if they extract it, it cannot be used to impersonate another tenant. |
-| **Hashed host.key** | `host.key` contains a SHA-256 hash of the license key — not the raw key. Reading the file doesn't reveal the actual secret. |
-| **Hardware MachineId** | Each machine's ID is derived from CPU + motherboard + MAC. Copying `Host.exe` to another machine generates a different ID — bypassing seat limits is not possible by file copying. |
+| **Hashed host.key** | `host.key` contains a SHA-256 hash of the license key - not the raw key. Reading the file doesn't reveal the actual secret. |
+| **Hardware MachineId** | Each machine's ID is derived from CPU + motherboard + MAC. Copying `Host.exe` to another machine generates a different ID - bypassing seat limits is not possible by file copying. |
 | **Rate limiting** | The relay allows max 15 connections/IP/minute. After 5 auth failures from one IP, that IP is banned for 10 minutes. |
 | **SHA-256 update verification** | Before applying any auto-update, the client verifies the downloaded EXE matches the SHA-256 hash you set in Render. A tampered file is rejected. |
-| **Authenticated /api/version** | The version endpoint requires an `X-Host-Token` header — anonymous probing returns 401. |
+| **Authenticated /api/version** | The version endpoint requires an `X-Host-Token` header - anonymous probing returns 401. |
 
 ---
 

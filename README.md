@@ -1,4 +1,4 @@
-# RemoteAdminTool
+﻿# RemoteAdminTool
 
 A **multi-tenant Windows remote desktop platform** built in C#. A super admin (platform owner) manages multiple sub-admins, each with their own pool of end-user machines.
 
@@ -7,7 +7,7 @@ A **multi-tenant Windows remote desktop platform** built in C#. A super admin (p
 ## How It Works
 
 ```
-Relay Server (Render — always on)
+Relay Server (Render - always on)
         |
         +--- You (Super Admin) ---- Viewer.exe ---- manage all tenants and nodes
         |
@@ -18,9 +18,9 @@ Relay Server (Render — always on)
                  +-- Host.exe (PC 1, PC 2, ...)
 ```
 
-- **Viewer.exe** is a universal app. Super admin and sub-admins use the same binary — the difference is the token they log in with.
+- **Viewer.exe** is a universal app. Super admin and sub-admins use the same binary - the difference is the token they log in with.
 - **Host.exe** is unique per sub-admin. Each build has a per-tenant `HostToken` compiled in; `host.key` carries the hashed license key.
-- **The relay** is the only server — handles auth, routing, tenant isolation, and auto-update delivery.
+- **The relay** is the only server - handles auth, routing, tenant isolation, and auto-update delivery.
 
 ---
 
@@ -30,13 +30,13 @@ Relay Server (Render — always on)
 |---------|---------| 
 | Remote Desktop | Real-time screen viewing with mouse and keyboard control |
 | Multi-Tenant | Super admin → sub-admins → end-user nodes (3-tier isolation) |
-| Per-Tenant Host Token | Each sub-admin's Host.exe has a unique compiled-in token — key leaks don't cross tenants |
-| Hashed host.key | License key stored as SHA-256 hash on disk — raw key never written to the client |
-| Hardware MachineId | MachineId derived from CPU + motherboard + MAC — can't be spoofed by file copying |
+| Per-Tenant Host Token | Each sub-admin's Host.exe has a unique compiled-in token - key leaks don't cross tenants |
+| Hashed host.key | License key stored as SHA-256 hash on disk - raw key never written to the client |
+| Hardware MachineId | MachineId derived from CPU + motherboard + MAC - can't be spoofed by file copying |
 | Rate Limiting | 15 connections/IP/minute; 5 auth failures → 10-min IP ban |
 | Auto-Update | Host/Viewer silently self-update from GitHub Releases on startup |
-| SHA-256 Update Verification | EXE hash verified before applying any auto-update — tampered binaries rejected |
-| Authenticated Version API | `/api/version` requires `X-Host-Token` — anonymous probing returns 401 |
+| SHA-256 Update Verification | EXE hash verified before applying any auto-update - tampered binaries rejected |
+| Authenticated Version API | `/api/version` requires `X-Host-Token` - anonymous probing returns 401 |
 | Hub-and-Spoke Relay | Central relay on Render, no port forwarding needed |
 | Tenant Management | Create, suspend, resume sub-admin tenants from the UI |
 | DXGI GPU Capture | GPU-accelerated screen capture with GDI fallback |
@@ -61,7 +61,7 @@ RemoteAdminTool/
 |-- Host/                WPF tray app installed on end-user PCs
 |-- Shared/              Protocol messages shared across all projects
 |-- .env                 Single source of truth for all secrets (never committed)
-|-- build.ps1            Master build script — reads .env, patches constants, publishes EXEs
+|-- build.ps1            Master build script - reads .env, patches constants, publishes EXEs
 |-- BuildHostForSubAdmin.bat   Double-click to build a Host EXE for a specific sub-admin
 +-- SUPERADMIN_GUIDE.md  Full step-by-step operations guide (no coding required)
 ```
@@ -78,7 +78,7 @@ RemoteAdminTool/
 | Database | PostgreSQL (Render managed) |
 | Hosting | Render |
 | Screen Capture | Windows DXGI Desktop Duplication API |
-| Hardware Fingerprint | WMI (System.Management) — CPU + mobo serial + MAC |
+| Hardware Fingerprint | WMI (System.Management) - CPU + mobo serial + MAC |
 | Logging | Serilog |
 
 ---
@@ -136,7 +136,7 @@ Set these in your Render Web Service dashboard under **Environment**:
 | Variable | When to update | If blank | If stale/wrong |
 |----------|---------------|----------|----------------|
 | `HOST_VERSION` | Every Host.exe release | Clients never see an update | Clients skip download (think they're current) |
-| `HOST_DOWNLOAD_URL` | Every Host.exe release | Auto-update disabled — no error | Download fails silently |
+| `HOST_DOWNLOAD_URL` | Every Host.exe release | Auto-update disabled - no error | Download fails silently |
 | `HOST_EXE_SHA256` | Every Host.exe release | Hash check skipped | Clients reject the download |
 | `VIEWER_VERSION` | Every Viewer.exe release | Same as HOST_VERSION | Same |
 | `VIEWER_DOWNLOAD_URL` | Every Viewer.exe release | Same as HOST_DOWNLOAD_URL | Same |
@@ -169,7 +169,7 @@ SHA-256 (paste into Render env var HOST_EXE_SHA256):
   a3f8c2d91e0b...64 hex chars...
 ```
 
-### The download URL — what it is and how to get it
+### The download URL - what it is and how to get it
 
 The `HOST_DOWNLOAD_URL` / `VIEWER_DOWNLOAD_URL` is a **permanent direct link** to a file attached to a GitHub Release:
 
@@ -195,8 +195,8 @@ https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
 |-----------|--------|
 | Just published a new `Host.exe` | Update `HOST_EXE_SHA256` in Render |
 | Just published a new `Viewer.exe` | Update `VIEWER_EXE_SHA256` in Render |
-| Only pushed relay server code (`git push`) | Do nothing — EXEs didn't change |
-| Hash is blank | Verification is skipped — safe for initial setup |
+| Only pushed relay server code (`git push`) | Do nothing - EXEs didn't change |
+| Hash is blank | Verification is skipped - safe for initial setup |
 | Forgot to update hash after publishing | Clients silently abort the update. Fix: paste the correct hash into Render now. |
 
 ---
@@ -208,7 +208,7 @@ https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
 | Relay URL | `HostConstants.cs`, `ViewerConstants.cs` | `build.ps1` patches before compile |
 | Global host token | `ViewerConstants.cs` | `build.ps1` patches before compile |
 | Per-tenant host token | `HostConstants.cs` | `build.ps1 -HostToken <token>` patches before compile |
-| License key (raw) | Relay DB only | Generated at tenant creation — never written to client disk |
+| License key (raw) | Relay DB only | Generated at tenant creation - never written to client disk |
 | License key hash | `host.key` on end-user disk | `build.ps1` computes SHA-256 and writes it |
 | Super admin token | Render env only | Never in code |
 | DB password | `.env` (gitignored) + Render env | Never in code |
@@ -229,4 +229,4 @@ git commit -m "description"
 git push origin main
 ```
 
-Render auto-redeploys on push. Schema migrations run automatically on startup — new columns are added idempotently.
+Render auto-redeploys on push. Schema migrations run automatically on startup - new columns are added idempotently.
