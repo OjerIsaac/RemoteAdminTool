@@ -122,18 +122,27 @@ VIEWER_EXE_SHA256=
 
 Set these in your Render Web Service dashboard under **Environment**:
 
+#### Always required (set once)
+
 | Variable | Value |
-|----------|-------|
+|----------|----- |
 | `Auth__SuperAdminToken` | Your super admin token |
 | `Auth__HostToken` | Global host registration token |
 | `RelayServer__TLS` | `false` |
 | `DATABASE_URL` | Auto-set when you link a Render Postgres DB |
-| `HOST_VERSION` | Current host version (e.g. `1.0.0`) |
-| `VIEWER_VERSION` | Current viewer version |
-| `HOST_DOWNLOAD_URL` | GitHub Releases URL for Host.exe |
-| `VIEWER_DOWNLOAD_URL` | GitHub Releases URL for Viewer.exe |
-| `HOST_EXE_SHA256` | SHA-256 of published Host.exe (printed by build.ps1) |
-| `VIEWER_EXE_SHA256` | SHA-256 of published Viewer.exe (printed by build.ps1) |
+
+#### Auto-update (update every time you publish a new EXE)
+
+| Variable | When to update | If blank | If stale/wrong |
+|----------|---------------|----------|----------------|
+| `HOST_VERSION` | Every Host.exe release | Clients never see an update | Clients skip download (think they're current) |
+| `HOST_DOWNLOAD_URL` | Every Host.exe release | Auto-update disabled — no error | Download fails silently |
+| `HOST_EXE_SHA256` | Every Host.exe release | Hash check skipped | Clients reject the download |
+| `VIEWER_VERSION` | Every Viewer.exe release | Same as HOST_VERSION | Same |
+| `VIEWER_DOWNLOAD_URL` | Every Viewer.exe release | Same as HOST_DOWNLOAD_URL | Same |
+| `VIEWER_EXE_SHA256` | Every Viewer.exe release | Same as HOST_EXE_SHA256 | Same |
+
+**Rule:** Update all three matching vars together on every release (`VERSION` + `DOWNLOAD_URL` + `EXE_SHA256`). Missing one causes silent failures.
 
 ---
 
@@ -149,11 +158,46 @@ Set these in your Render Web Service dashboard under **Environment**:
 # Publish Host EXE for a specific sub-admin (use BuildHostForSubAdmin.bat instead)
 .\build.ps1 -PublishHostForTenant <LicenseKey> -HostToken <HostToken>
 
-# Publish both
+# Publish both Viewer + build (no Host EXE)
 .\build.ps1 -PublishAll
 ```
 
-`build.ps1` prints the **SHA-256 hash** of each published EXE — paste this into the matching Render env var.
+After every publish, `build.ps1` prints the **SHA-256 hash** of the output EXE:
+
+```
+SHA-256 (paste into Render env var HOST_EXE_SHA256):
+  a3f8c2d91e0b...64 hex chars...
+```
+
+### The download URL — what it is and how to get it
+
+The `HOST_DOWNLOAD_URL` / `VIEWER_DOWNLOAD_URL` is a **permanent direct link** to a file attached to a GitHub Release:
+
+```
+https://github.com/<username>/<repo>/releases/download/<tag>/<filename>
+```
+
+For this repo:
+```
+https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Host.exe
+https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
+```
+
+**How to get it:** GitHub repo → Releases → click the release → under Assets → right-click the file → **Copy link address**.
+
+> Leave `HOST_DOWNLOAD_URL` / `VIEWER_DOWNLOAD_URL` **blank** to disable auto-update entirely with no errors. Fill in once you publish to GitHub Releases.
+
+### SHA-256 update rule
+
+> **Every time you publish a new EXE → copy the printed hash → paste into the matching Render env var. Same sitting, same step.**
+
+| Situation | Action |
+|-----------|--------|
+| Just published a new `Host.exe` | Update `HOST_EXE_SHA256` in Render |
+| Just published a new `Viewer.exe` | Update `VIEWER_EXE_SHA256` in Render |
+| Only pushed relay server code (`git push`) | Do nothing — EXEs didn't change |
+| Hash is blank | Verification is skipped — safe for initial setup |
+| Forgot to update hash after publishing | Clients silently abort the update. Fix: paste the correct hash into Render now. |
 
 ---
 
