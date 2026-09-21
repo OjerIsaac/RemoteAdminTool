@@ -1,7 +1,31 @@
-﻿# RemoteAdminTool - Super Admin Operations Guide
+# RemoteAdminTool - Super Admin Operations Guide
 
 This guide tells you exactly what to do, step by step, with no coding required.
 Keep it open whenever you are operating the software.
+
+---
+
+## Before You Start - One-Time Setup
+
+Do this once before anything else.
+
+### 1. Publish Viewer.exe (your admin app)
+
+Open a PowerShell terminal in `C:\c#-projects\RemoteAdminTool\` and run:
+```powershell
+.\build.ps1 -PublishViewer
+```
+This produces `Viewer\dist\Viewer.exe`. This is the app you will use every day.
+
+> Run this again any time you update your code and want the latest version.
+
+### 2. Make sure the relay is running
+
+Your relay lives on Render and is always on. Check it is live by visiting:
+```
+https://remoteadmintool.onrender.com
+```
+You should see a response (even just `RemoteAdminTool relay running`). If Render shows the service as "Suspended", resume it from the Render dashboard.
 
 ---
 
@@ -92,25 +116,27 @@ Host\dist\Host.exe   ← the agent binary (unique per tenant)
 Host\dist\host.key   ← hashed license key (safe to leave on disk)
 ```
 
-### Step 4 - Set the SHA-256 hash in Render (first time only)
+### Step 4 - Update Render with the SHA-256 hash
 
-The hash prevents tampered updates from being installed.
+The hash prevents tampered updates from being installed on sub-admin machines.
 
-1. Go to [render.com](https://render.com) → your relay web service → **Environment** tab
+> **Do this every time you build a new Host.exe.** The script always prints the hash - just copy and paste it.
+
+1. Go to [render.com](https://render.com) -> your relay web service -> **Environment** tab
 2. Add/update:
    ```
    HOST_EXE_SHA256 = <paste the hash the script just printed>
    ```
 3. Click **Save Changes** - Render redeploys (~2 min)
 
-> Skip this step if you are not using auto-update yet. Set `HOST_DOWNLOAD_URL` to blank in Render and the relay will not push updates.
+> **Not using auto-update yet?** If `HOST_DOWNLOAD_URL` is blank in Render, you can skip this step for now - clients won't check for updates. Come back to it when you set up GitHub Releases (Part 6).
 
 ### Step 5 - What to send the sub-admin
 
 Send the sub-admin **four things**:
 
 | What | Where to find it | Purpose |
-|------|-----------------|---------| 
+|------|-----------------|---------|
 | **Host.exe** | `Host\dist\Host.exe` | They distribute this to every PC they want to control |
 | **host.key** | `Host\dist\host.key` | Their hashed license - must stay in the same folder as Host.exe |
 | **Admin Token** | From the credentials dialog (Step 2) | They paste this into Viewer.exe to log in |

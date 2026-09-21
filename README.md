@@ -1,4 +1,4 @@
-﻿# RemoteAdminTool
+# RemoteAdminTool
 
 A **multi-tenant Windows remote desktop platform** built in C#. A super admin (platform owner) manages multiple sub-admins, each with their own pool of end-user machines.
 
@@ -117,6 +117,26 @@ VIEWER_EXE_SHA256=
 ```powershell
 .\build.ps1
 ```
+
+4. Publish Viewer.exe so you can log in:
+
+```powershell
+.\build.ps1 -PublishViewer
+```
+
+Output: `Viewer\dist\Viewer.exe` - open this and log in as super admin to manage tenants.
+
+5. Running Host from Visual Studio (dev only):
+
+Host.exe requires a `host.key` file next to it to start. For local dev, after creating your first tenant in the Viewer, generate the key with:
+
+```powershell
+.\MakeDevHostKey.ps1 -LicenseKey <paste-license-key-from-viewer>
+```
+
+Then rebuild Host in VS (`Ctrl+Shift+B`) - the key copies to the output folder automatically.
+
+> For distribution to real sub-admins, use `BuildHostForSubAdmin.bat` instead - it handles everything.
 
 ### Render Environment Variables
 

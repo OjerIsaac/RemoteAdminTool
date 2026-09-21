@@ -33,6 +33,12 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- host.key sits next to Host.exe and contains SHA-256(LicenseKey).
+         For dev/debug builds, create this file manually using MakeDevHostKey.ps1.
+         For distribution, BuildHostForSubAdmin.bat generates it automatically. -->
+    <None Update="host.key" Condition="Exists('host.key')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
