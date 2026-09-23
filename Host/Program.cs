@@ -94,7 +94,9 @@ try
         }
 
         var relayUrl              = HostConstants.RelayUrl;
-        var machineName           = config["MachineName"] ?? Environment.MachineName;
+        var machineName           = !string.IsNullOrWhiteSpace(config["MachineName"])
+                                      ? config["MachineName"]!
+                                      : Environment.MachineName;
         var unattendedMode        = bool.TryParse(config["UnattendedMode"],       out var ua)   && ua;
         var allowRemoteSilentMode = bool.TryParse(config["AllowRemoteSilentMode"], out var arsp) && arsp;
 

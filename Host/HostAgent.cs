@@ -102,10 +102,15 @@ public sealed class HostAgent
         ConnectionStateChanged?.Invoke(this, "Connected to relay");
 
         // Register with the relay
+        var buildNumber = Environment.OSVersion.Version.Build;
+        var majorVer    = Environment.OSVersion.Version.Major;
+        // Windows 11 starts at build 22000; Windows 10 is major 10 below that
+        var winLabel    = (majorVer >= 10 && buildNumber >= 22000) ? "Windows 11" : $"Windows {majorVer}";
+        var osVersion   = $"{winLabel} (Build {buildNumber})";
         var register = new HostRegisterMessage(
             _machineId,
             _machineName,
-            Environment.OSVersion.VersionString,
+            osVersion,
             "1.0.0",
             _authToken,
             _licenseKey

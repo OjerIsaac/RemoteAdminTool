@@ -327,7 +327,8 @@ public partial class MainWindow : Window
             _activeSessionMachineId = msg.MachineId;
             _remoteWidth  = msg.ScreenWidth;
             _remoteHeight = msg.ScreenHeight;
-            SessionHostName.Text = $"  {msg.MachineName}  ({msg.MachineId})";
+            SessionHostName.Text = $"  {msg.MachineName}";
+            ConnectingOverlay.Visibility      = Visibility.Collapsed;  // hide spinner
             SessionToolbar.Visibility         = Visibility.Visible;
             NoSessionPlaceholder.Visibility   = Visibility.Collapsed;
             RemoteScreenImage.Focus();
@@ -436,6 +437,9 @@ public partial class MainWindow : Window
     private async void NodeList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_client is null || NodeList.SelectedItem is not HostInfoMessage selectedHost) return;
+        // Show connecting overlay immediately so the user knows something is happening
+        ConnectingLabel.Text      = $"Connecting to {selectedHost.MachineName}...";
+        ConnectingOverlay.Visibility = Visibility.Visible;
         await _client.ConnectToHostAsync(selectedHost.MachineId);
     }
 
@@ -457,6 +461,7 @@ public partial class MainWindow : Window
     {
         _activeSessionMachineId = null;
         RemoteScreenImage.Source = null;
+        ConnectingOverlay.Visibility    = Visibility.Collapsed;  // never get stuck
         SessionToolbar.Visibility       = Visibility.Collapsed;
         NoSessionPlaceholder.Visibility = Visibility.Visible;
         MonitorSelector.Visibility = Visibility.Collapsed;

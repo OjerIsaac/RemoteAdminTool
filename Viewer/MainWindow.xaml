@@ -152,13 +152,13 @@
                             <DataTemplate>
                                 <Border Background="#313244" CornerRadius="6" Padding="10,8" Margin="2">
                                     <StackPanel>
+                                        <!-- PC name - big and bold -->
                                         <TextBlock Text="{Binding MachineName}" FontSize="13"
                                                    FontWeight="SemiBold" Foreground="#cdd6f4"/>
-                                        <TextBlock FontSize="10" Foreground="#6c7086" Margin="0,2,0,0">
-                                            <Run Text="{Binding MachineId, Mode=OneWay}"/>
-                                            <Run Text=" - "/>
-                                            <Run Text="{Binding OsVersion, Mode=OneWay}"/>
-                                        </TextBlock>
+                                        <!-- OS version - clean string sent by Host -->
+                                        <TextBlock Text="{Binding OsVersion, Mode=OneWay}"
+                                                   FontSize="10" Foreground="#6c7086" Margin="0,2,0,0"/>
+                                        <!-- Tenant label (super admin only) -->
                                         <TextBlock x:Name="TenantLabel" FontSize="9" Foreground="#89b4fa"
                                                    Margin="0,2,0,0" Visibility="Collapsed">
                                             <Run Text="Tenant: "/>
@@ -310,6 +310,24 @@
                                 Padding="12,4"/>
                     </StackPanel>
                 </DockPanel>
+            </Border>
+
+            <!-- Connecting overlay: shown when node is clicked, hidden once session starts -->
+            <Border x:Name="ConnectingOverlay" Visibility="Collapsed" Panel.ZIndex="20"
+                    Background="#CC1e1e2e">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock x:Name="ConnectingLabel"
+                               Text="Connecting..."
+                               Foreground="#89b4fa" FontSize="20" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                    <ProgressBar IsIndeterminate="True" Width="200" Height="6"
+                                 Margin="0,16,0,0"
+                                 Foreground="#89b4fa" Background="#313244"
+                                 BorderThickness="0"/>
+                    <TextBlock Text="Waiting for host to accept..."
+                               Foreground="#6c7086" FontSize="12"
+                               HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                </StackPanel>
             </Border>
 
             <!-- TAB: Screen -->

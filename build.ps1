@@ -26,6 +26,7 @@ param(
     [string]$PublishHostForTenant = "",   # LicenseKey for a specific sub-admin
     [string]$HostToken            = "",   # Per-tenant HostToken (from Viewer Details dialog)
     [switch]$PublishViewer,
+    [switch]$PublishHostDev,              # Rebuild Host.exe only - keeps existing host.key/host.token
     [switch]$PublishAll
 )
 
@@ -166,7 +167,13 @@ if ($PublishHostForTenant) {
         -o $distHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
     if ($LASTEXITCODE -eq 0) {
         # Keep only Host.exe - remove debug/temp files
-        Get-ChildItem $distHost -Exclude "Host.exe" | Remove-Item -Force
+        Get-ChildItem $distHost -Exclude "Host.exe" | Remove-Item -Force -Recurse
+
+        # Copy appsettings.json so local testing picks up UnattendedMode etc.
+        $appSettings = Join-Path $root "Host\appsettings.json"
+        if (Test-Path $appSettings) {
+            Copy-Item $appSettings (Join-Path $distHost "appsettings.json") -Force
+        }
 
         # Write host.key - SHA-256(LicenseKey)
         $licenseBytes  = [System.Text.Encoding]::UTF8.GetBytes($PublishHostForTenant)
@@ -196,6 +203,29 @@ if ($PublishHostForTenant) {
         Write-Host "    host.key   - hashed license key (tenant-specific)" -ForegroundColor DarkGray
         Write-Host "    host.token - host auth token   (tenant-specific)" -ForegroundColor DarkGray
         Write-Host "    All three files must stay in the same folder on end-user machines." -ForegroundColor DarkGray
+    }
+}
+
+# ---- Dev Host publish (no keys needed - keeps existing host.key/host.token) ----
+if ($PublishHostDev) {
+    Write-Host ""
+    Write-Host "Publishing Host EXE for local dev testing (keys preserved)..." -ForegroundColor Yellow
+    $distHost = Join-Path $root "Host\dist"
+    if (-not (Test-Path (Join-Path $distHost "host.key"))) {
+        Write-Error "host.key not found in Host\dist\ - run BuildHostForSubAdmin.bat first to generate keys."
+    } else {
+        & dotnet publish "$root\Host\Host.csproj" -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o $distHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
+        if ($LASTEXITCODE -eq 0) {
+            # Remove publish artifacts but keep the key files and appsettings
+            Get-ChildItem $distHost -Exclude "Host.exe","host.key","host.token","appsettings.json" | Remove-Item -Force -Recurse
+            # Always refresh appsettings.json from source
+            $appSettings = Join-Path $root "Host\appsettings.json"
+            if (Test-Path $appSettings) { Copy-Item $appSettings (Join-Path $distHost "appsettings.json") -Force }
+            Write-Host "  Host.exe rebuilt -> $distHost\Host.exe" -ForegroundColor Green
+            Write-Host "  host.key + host.token preserved (no keys needed)" -ForegroundColor DarkGray
+        }
     }
 }
 
