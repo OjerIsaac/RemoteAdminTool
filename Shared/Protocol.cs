@@ -131,14 +131,19 @@ public readonly record struct HostRegisterAckMessage(
     string? RejectReason
 );
 
-public readonly record struct HostInfoMessage(
+public record class HostInfoMessage(
     string MachineId,
     string MachineName,
     string OsVersion,
     bool IsOnline,
     DateTime LastSeen,
     string TenantId     // included so super admin can see which tenant owns the host
-);
+)
+{
+    /// <summary>First 8 chars of MachineId - shown in node card as a short unique fingerprint.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ShortId => MachineId.Length >= 8 ? MachineId[..8].ToUpper() : MachineId.ToUpper();
+};
 
 public readonly record struct HostListMessage(
     HostInfoMessage[] Hosts

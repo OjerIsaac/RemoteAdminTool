@@ -155,9 +155,13 @@
                                         <!-- PC name - big and bold -->
                                         <TextBlock Text="{Binding MachineName}" FontSize="13"
                                                    FontWeight="SemiBold" Foreground="#cdd6f4"/>
-                                        <!-- OS version - clean string sent by Host -->
+                                        <!-- OS version -->
                                         <TextBlock Text="{Binding OsVersion, Mode=OneWay}"
                                                    FontSize="10" Foreground="#6c7086" Margin="0,2,0,0"/>
+                                        <!-- Short unique machine ID -->
+                                        <TextBlock FontSize="9" Foreground="#45475a" Margin="0,1,0,0">
+                                            <Run Text="ID: "/><Run Text="{Binding ShortId, Mode=OneWay}" Foreground="#585b70"/>
+                                        </TextBlock>
                                         <!-- Tenant label (super admin only) -->
                                         <TextBlock x:Name="TenantLabel" FontSize="9" Foreground="#89b4fa"
                                                    Margin="0,2,0,0" Visibility="Collapsed">

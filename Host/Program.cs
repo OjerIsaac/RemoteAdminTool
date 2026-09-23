@@ -97,7 +97,7 @@ try
         var machineName           = !string.IsNullOrWhiteSpace(config["MachineName"])
                                       ? config["MachineName"]!
                                       : Environment.MachineName;
-        var unattendedMode        = bool.TryParse(config["UnattendedMode"],       out var ua)   && ua;
+        var unattendedMode        = !bool.TryParse(config["UnattendedMode"], out var ua) || ua; // default: true
         var allowRemoteSilentMode = bool.TryParse(config["AllowRemoteSilentMode"], out var arsp) && arsp;
 
         // MachineId is derived from hardware (CPU + mobo serial + MAC) - cannot be spoofed by copying a file
