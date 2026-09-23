@@ -189,11 +189,19 @@ public sealed class ConnectionHub
         {
             await HostIdleLoopAsync(host, ct);
         }
+        catch (OperationCanceledException) when (host.InSession)
+        {
+            // Normal: idle loop was cancelled because a session started.
+            // SessionRelay now owns host.Stream - do nothing here.
+        }
         finally
         {
             tenantHosts.TryRemove(register.MachineId, out _);
             Console.WriteLine($"[Hub] Host disconnected: {register.MachineName} ({register.MachineId})");
-            await NotifyAdminHostOfflineAsync(host, tenant, ct);
+
+            // Only broadcast offline if the host genuinely disconnected (not handed to a session).
+            if (!host.InSession)
+                await NotifyAdminHostOfflineAsync(host, tenant, ct);
         }
     }
 
@@ -214,9 +222,15 @@ public sealed class ConnectionHub
 
     private async Task HostIdleLoopAsync(ConnectedHost host, CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested && host.WebSocket.State == WebSocketState.Open)
+        // Link the external cancellation token with the host's own idle-loop token.
+        // StartSessionAsync cancels IdleLoopCts to abort the blocking ReadFrameAsync
+        // call immediately, handing sole stream ownership to SessionRelay.
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, host.IdleLoopCts.Token);
+        var loopCt = linked.Token;
+
+        while (!loopCt.IsCancellationRequested && host.WebSocket.State == WebSocketState.Open)
         {
-            var (type, payload) = await MessageFraming.ReadFrameAsync(host.Stream, ct);
+            var (type, payload) = await MessageFraming.ReadFrameAsync(host.Stream, loopCt);
             switch (type)
             {
                 case MessageType.Heartbeat:
@@ -390,6 +404,15 @@ public sealed class ConnectionHub
 
         Console.WriteLine($"[Hub] Starting session: Admin ({admin.TenantId}) <-> {host.MachineName}");
 
+        // Cancel the idle loop's token FIRST so ReadFrameAsync unblocks immediately
+        // via OperationCanceledException. Only then does SessionRelay start reading
+        // host.Stream - eliminating the dual-reader race condition.
+        host.InSession = true;
+        host.IdleLoopCts.Cancel();
+
+        // Small yield to let the idle loop's catch/finally run before we start the relay.
+        await Task.Yield();
+
         var hostNotify = new SessionStartedMessage(machineId, host.MachineName, 0, 0);
         await MessageFraming.WriteFrameAsync(host.Stream, MessageType.SessionStarted,
             JsonSerializer.SerializeToUtf8Bytes(hostNotify), ct);
@@ -529,6 +552,16 @@ public sealed class ConnectedHost
     public required WebSocketStreamAdapter Stream { get; init; }
     public DateTime ConnectedAt { get; init; }
     public DateTime LastHeartbeat { get; set; } = DateTime.UtcNow;
+    /// <summary>
+    /// Cancels the idle loop's ReadFrameAsync so SessionRelay can take
+    /// sole ownership of the host stream without a dual-reader race.
+    /// </summary>
+    public CancellationTokenSource IdleLoopCts { get; } = new();
+    /// <summary>
+    /// True once a session starts. Suppresses the spurious HostOffline
+    /// broadcast that would otherwise remove the node from the admin's list.
+    /// </summary>
+    public bool InSession { get; set; }
 }
 
 public sealed class ConnectedAdmin
