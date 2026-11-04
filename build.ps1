@@ -122,7 +122,7 @@ Write-Host "  Done." -ForegroundColor Green
 
 # ---- [3/3] Build solution ----
 Write-Host "[3/3] Building solution..." -ForegroundColor Yellow
-$buildOutput = & dotnet build "$root\RemoteAdminTool.sln" -c Release 2>&1
+$buildOutput = & dotnet build "$root\RemoteAdminTool.sln" -c Release -m:1 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host $buildOutput
     Write-Error "Build failed."
@@ -150,7 +150,15 @@ if ($PublishViewer -or $PublishAll) {
         Get-ChildItem $distViewer -Exclude "Viewer.exe" | Remove-Item -Force
         $viewerExe = Join-Path $distViewer "Viewer.exe"
         $viewerHash = Get-FileSha256 $viewerExe
-        Write-Host "  Viewer EXE -> $distViewer\Viewer.exe" -ForegroundColor Green
+
+        # Also archive to root dist\YYYY-MM-DD\viewer\
+        $dateStr        = (Get-Date).ToString("yyyy-MM-dd")
+        $viewerDatedDir = Join-Path $root "dist\$dateStr\viewer"
+        New-Item -ItemType Directory -Path $viewerDatedDir -Force | Out-Null
+        Copy-Item $viewerExe (Join-Path $viewerDatedDir "Viewer.exe") -Force
+
+        Write-Host "  Viewer EXE    -> $distViewer\Viewer.exe" -ForegroundColor Green
+        Write-Host "  Date Archive  -> $viewerDatedDir\Viewer.exe" -ForegroundColor Yellow
         Write-Host ""
         Write-Host "  SHA-256 (paste into Render env var VIEWER_EXE_SHA256):" -ForegroundColor Yellow
         Write-Host "  $viewerHash" -ForegroundColor Cyan
@@ -191,18 +199,47 @@ if ($PublishHostForTenant) {
         $hostExe  = Join-Path $distHost "Host.exe"
         $hostHash = Get-FileSha256 $hostExe
 
-        Write-Host "  Host EXE  -> $distHost\Host.exe" -ForegroundColor Green
-        Write-Host "  host.key  -> $distHost\host.key  (SHA-256 of LicenseKey)" -ForegroundColor Green
-        Write-Host "  host.token -> $distHost\host.token (per-tenant HostToken)" -ForegroundColor Green
+        # Also archive to root dist\YYYY-MM-DD\subadmin_xxxx\ for easy tracking
+        $dateStr        = (Get-Date).ToString("yyyy-MM-dd")
+        $timeStr        = (Get-Date).ToString("HHmmss")
+        $tenantPrefix   = $PublishHostForTenant.Substring(0, [Math]::Min(8, $PublishHostForTenant.Length))
+        $tenantDatedDir = Join-Path $root "dist\$dateStr\subadmin_${tenantPrefix}_$timeStr"
+        New-Item -ItemType Directory -Path $tenantDatedDir -Force | Out-Null
+
+        Copy-Item (Join-Path $distHost "Host.exe")   (Join-Path $tenantDatedDir "Host.exe") -Force
+        Copy-Item (Join-Path $distHost "host.key")   (Join-Path $tenantDatedDir "host.key") -Force
+        Copy-Item (Join-Path $distHost "host.token") (Join-Path $tenantDatedDir "host.token") -Force
+        if (Test-Path (Join-Path $distHost "appsettings.json")) {
+            Copy-Item (Join-Path $distHost "appsettings.json") (Join-Path $tenantDatedDir "appsettings.json") -Force
+        }
+
+        $subAdminReadme = @"
+RemoteAdminTool - Host Agent Package
+Generated:          $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Tenant License Key: $PublishHostForTenant
+Host Auth Token:    $effectiveHostToken
+Host EXE SHA-256:   $hostHash
+
+INSTRUCTIONS FOR SUB-ADMIN:
+1. Copy ALL files in this folder (Host.exe, host.key, host.token, appsettings.json) to the target machine.
+2. They MUST remain together in the exact same folder.
+3. Run Host.exe to start the agent (it will run silently in the system tray).
+"@
+        Set-Content -Path (Join-Path $tenantDatedDir "README_FOR_SUBADMIN.txt") -Encoding UTF8 -Value $subAdminReadme
+
+        Write-Host "  Host EXE      -> $distHost\Host.exe" -ForegroundColor Green
+        Write-Host "  host.key      -> $distHost\host.key  (SHA-256 of LicenseKey)" -ForegroundColor Green
+        Write-Host "  host.token    -> $distHost\host.token (per-tenant HostToken)" -ForegroundColor Green
+        Write-Host "  Date Archive  -> $tenantDatedDir" -ForegroundColor Yellow
         Write-Host ""
         Write-Host "  SHA-256 (paste into Render env var HOST_EXE_SHA256):" -ForegroundColor Yellow
         Write-Host "  $hostHash" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "  Send ALL THREE files to the sub-admin:" -ForegroundColor Yellow
+        Write-Host "  Ready to send to sub-admin from: $tenantDatedDir" -ForegroundColor Yellow
         Write-Host "    Host.exe   - the agent (SAME binary for all tenants - auto-update safe)" -ForegroundColor DarkGray
         Write-Host "    host.key   - hashed license key (tenant-specific)" -ForegroundColor DarkGray
         Write-Host "    host.token - host auth token   (tenant-specific)" -ForegroundColor DarkGray
-        Write-Host "    All three files must stay in the same folder on end-user machines." -ForegroundColor DarkGray
+        Write-Host "    All files must stay in the same folder on end-user machines." -ForegroundColor DarkGray
     }
 }
 

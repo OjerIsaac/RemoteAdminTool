@@ -134,15 +134,24 @@ VIEWER_EXE_SHA256=
 
 Output: `Viewer\dist\Viewer.exe` - open this and log in as super admin to manage tenants.
 
-5. Running Host from Visual Studio (dev only):
+5. Testing Host locally (dev loop):
 
-Host.exe requires a `host.key` file next to it to start. For local dev, after creating your first tenant in the Viewer, generate the key with:
+Host.exe requires `host.key` and `host.token` next to it to connect. To test locally linked to Super Admin:
+
+- Open `Viewer\dist\Viewer.exe`, log in as Super Admin (`Auth__SuperAdminToken`, license key blank).
+- Create a test tenant in the **Tenants** tab (e.g. name: `Local Dev`).
+- Copy the **License Key** and **Host Token** from the credentials dialog (or click **Details**).
+- Generate dev keys:
 
 ```powershell
-.\MakeDevHostKey.ps1 -LicenseKey <paste-license-key-from-viewer>
+.\MakeDevHostKey.ps1 -LicenseKey <paste-license-key> -HostToken <paste-host-token>
 ```
 
-Then rebuild Host in VS (`Ctrl+Shift+B`) - the key copies to the output folder automatically.
+- Run Host:
+  - In Visual Studio: rebuild Host (`Ctrl+Shift+B`) and press `F5` / `Ctrl+F5`.
+  - Standalone: run `.\DevBuildHost.bat` and run `Host\dist\Host.exe`.
+- In `Viewer.exe` under **Nodes**, your machine appears immediately. Click it to test the live session.
+- To stop the host: run `KillHost.bat`.
 
 > For distribution to real sub-admins, use `BuildHostForSubAdmin.bat` instead - it handles everything.
 

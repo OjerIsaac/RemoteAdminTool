@@ -34,12 +34,11 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- host.key and host.token sit next to Host.exe and are per-tenant.
-         For dev/debug builds, create both using MakeDevHostKey.ps1.
-         For distribution, BuildHostForSubAdmin.bat generates them automatically. -->
-    <None Update="host.key" Condition="Exists('host.key')">
+         They are kept in gitignored dist/ folders (never in git source tree). -->
+    <None Update="dist\host.key" Link="host.key" Condition="Exists('dist\host.key')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="host.token" Condition="Exists('host.token')">
+    <None Update="dist\host.token" Link="host.token" Condition="Exists('dist\host.token')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

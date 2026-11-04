@@ -83,7 +83,93 @@ The **Silent** checkbox in the session toolbar lets you take control of a machin
 
 ---
 
-## Part 2: Adding a New Sub-Admin
+## Part 2: Local Testing & Development (Testing Host on Your PC First)
+
+Before building and distributing `Host.exe` to real sub-admins, you can run and test everything locally on your development machine.
+
+### How it works
+- The relay routes all hosts by tenant license keys.
+- **The Super Admin has global visibility**: you can see and remotely control all hosts across all tenants in your **Nodes** tab.
+- To test locally without affecting real clients, you simply create a dedicated local test tenant (e.g., `Local Dev`). Once your local Host connects with that test tenant's keys, your PC immediately shows up in your Super Admin Viewer, ready for live testing.
+
+---
+
+### Step 1 - Log into Viewer.exe as Super Admin
+1. Open `Viewer\dist\Viewer.exe` (or press **F5** on the Viewer project in Visual Studio).
+2. In **Admin Token**, paste your `Auth__SuperAdminToken` from `.env`.
+3. Leave **License Key** blank.
+4. Click **Connect to Relay**.
+5. The status turns green (`Connected (Super Admin)`) and the **Tenants** tab appears.
+
+---
+
+### Step 2 - Create a Local Dev/Test Tenant
+*(You only need to do this once per database reset)*:
+1. In `Viewer.exe`, click the **Tenants** tab.
+2. Click **+ New**.
+3. Enter:
+   - **Name:** `Local Dev` (or `Internal Test`)
+   - **Email:** `dev@local`
+4. Click **Create Tenant**.
+5. A credentials popup appears. Copy the **License Key** and the **Host Token**.
+   *(If you already closed the popup, click **Details** next to `Local Dev` in the Tenants tab to copy them anytime).*
+
+---
+
+### Step 3 - Set up your Local Dev Keys
+Open PowerShell in `C:\c#-projects\RemoteAdminTool\` and run:
+
+```powershell
+.\MakeDevHostKey.ps1 -LicenseKey "<pasted-license-key>" -HostToken "<pasted-host-token>"
+```
+
+What this does:
+- Updates `Host\host.key` and `Host\host.token` (used when running/debugging from Visual Studio).
+- Updates `Host\dist\host.key` and `Host\dist\host.token` (used when running the standalone `Host\dist\Host.exe`).
+
+---
+
+### Step 4 - Run the Host locally
+Choose either method:
+
+* **Method A: Standalone EXE (Quick test)**
+  Double-click `Host\dist\Host.exe` (or run `.\DevBuildHost.bat`).
+* **Method B: Visual Studio (Debugging & breakpoints)**
+  In Visual Studio, right-click the **Host** project → **Set as Startup Project**, then press **F5** or **Ctrl+F5**.
+
+> The Host agent runs in the background and places a small icon in your Windows System Tray (near your clock).
+
+---
+
+### Step 5 - View and Control Your PC in the Viewer
+1. Switch back to your open `Viewer.exe`.
+2. Click the **Nodes** tab.
+3. Your local machine (e.g. `DESKTOP-...`) will appear with a green **Online** indicator and `Tenant: Local Dev`.
+4. Click on the node card to launch the session:
+   - **Screen Tab:** View your screen and test mouse/keyboard inputs.
+   - **Terminal Tab:** Test interactive PowerShell and CMD shell commands.
+   - **Files Tab:** Browse your local directories, test file upload, download, and delete.
+   - **Device Tab:** Verify hardware specs, IP addresses, and uptime.
+   - **Monitor Tab:** View live CPU, RAM, and process stats.
+   - **Silent Mode:** Check the **Silent** box in the top bar before connecting to test bypassing the user consent dialog.
+
+---
+
+### Step 6 - Making Code Changes & Retesting (Fast Iteration Loop)
+When you modify code in `Host`:
+1. Double-click `KillHost.bat` to stop any currently running Host process.
+2. Double-click `DevBuildHost.bat` (or rebuild in Visual Studio). It compiles your new changes while preserving your dev keys.
+3. Start `Host\dist\Host.exe` (or press F5 in Visual Studio).
+4. Reconnect from Viewer.
+
+When you modify code in `Viewer`:
+1. Close the running Viewer.
+2. Rebuild via Visual Studio or run `.\build.ps1 -PublishViewer`.
+3. Reopen `Viewer\dist\Viewer.exe`.
+
+---
+
+## Part 3: Adding a New Sub-Admin
 
 Do this whenever a new sub-admin joins your platform.
 
@@ -131,7 +217,7 @@ Host\dist\host.token  <- auth token        (unique to this sub-admin)
 > **When to do this:**
 > - **Adding your FIRST sub-admin** → YES, do this now
 > - **Adding more sub-admins later** → SKIP - the hash doesn't change (same Host.exe)
-> - **Publishing a new version of Host.exe** → YES, update the hash (Part 6)
+> - **Publishing a new version of Host.exe** → YES, update the hash (Part 7)
 
 1. Go to [render.com](https://render.com) -> your relay web service -> **Environment** tab
 2. Add/update:
@@ -140,7 +226,7 @@ Host\dist\host.token  <- auth token        (unique to this sub-admin)
    ```
 3. Click **Save Changes** - Render redeploys (~2 min)
 
-> **Not using auto-update yet?** If `HOST_DOWNLOAD_URL` is blank in Render, skip this entirely - clients won't check for updates. Come back to it when you set up GitHub Releases (Part 6).
+> **Not using auto-update yet?** If `HOST_DOWNLOAD_URL` is blank in Render, skip this entirely - clients won't check for updates. Come back to it when you set up GitHub Releases (Part 7).
 
 ### Step 5 - What to send the sub-admin
 
@@ -160,7 +246,7 @@ Send the sub-admin **five things**:
 
 ---
 
-## Part 3: What Sub-Admins Do
+## Part 4: What Sub-Admins Do
 
 Tell your sub-admin exactly this:
 
@@ -191,7 +277,7 @@ Tell your sub-admin exactly this:
 
 ---
 
-## Part 4: Viewing Credentials for an Existing Sub-Admin
+## Part 5: Viewing Credentials for an Existing Sub-Admin
 
 If you need to rebuild a Host EXE or share the Admin Token again:
 
@@ -202,7 +288,7 @@ If you need to rebuild a Host EXE or share the Admin Token again:
 
 ---
 
-## Part 5: Suspending / Resuming a Sub-Admin
+## Part 6: Suspending / Resuming a Sub-Admin
 
 - **Suspend** - blocks their Host machines from connecting (e.g. non-payment)
 - **Resume** - re-activates them
@@ -212,7 +298,7 @@ If you need to rebuild a Host EXE or share the Admin Token again:
 
 ---
 
-## Part 6: Pushing Updates to Host.exe (Auto-Update)
+## Part 7: Pushing Updates to Host.exe (Auto-Update)
 
 When you release a new version, every existing installation updates itself silently on next startup - no resharing required.
 
@@ -340,7 +426,7 @@ On next startup, every running `Host.exe` will:
 ---
 
 
-## Part 7: Pushing Updates to Viewer.exe (Auto-Update)
+## Part 8: Pushing Updates to Viewer.exe (Auto-Update)
 
 When you ship a new Viewer (e.g. after adding new features like the Terminal, File Manager, Device tab etc.), every sub-admin's existing `Viewer.exe` downloads and installs it silently the next time they open it. They never have to do anything manually.
 
@@ -516,7 +602,7 @@ https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
 ---
 
 
-## Part 8: The SHA-256 Hash - When to Update It
+## Part 9: The SHA-256 Hash - When to Update It
 
 The SHA-256 hash is a fingerprint of your EXE file. Clients check it before installing any update - if the file doesn't match the hash you set in Render, they refuse to install it. This stops anyone tampering with the download.
 
@@ -539,7 +625,7 @@ The hash changes **only when the binary changes** - i.e. every time you run `bui
 | I haven't set up auto-update yet (URL is blank) | **SKIP** - leave hash blank, clients won't try to update |
 | I forgot to update the hash after publishing | **Fix it now** - go to Render, paste the correct hash, save. Clients will retry on next startup. |
 
-### Step-by-step reminder (already covered in Parts 6 & 7, summarised here)
+### Step-by-step reminder (already covered in Parts 7 & 8, summarised here)
 
 1. Run `build.ps1` → script prints the SHA-256 at the bottom
 2. Copy it (it's 64 hex characters, e.g. `a3f8c2d9...`)
@@ -555,7 +641,7 @@ The hash changes **only when the binary changes** - i.e. every time you run `bui
 
 ---
 
-## Part 9: Deploying Relay Server Updates
+## Part 10: Deploying Relay Server Updates
 
 When relay server code changes need to go live:
 
@@ -589,6 +675,9 @@ Render automatically redeploys. Takes about 2 minutes. Schema migrations run aut
 | Open your admin app | Double-click `Viewer\dist\Viewer.exe` |
 | Log in as super admin | Admin Token = `Auth__SuperAdminToken` from `.env`, License Key = blank |
 | Log out | Click red **Logout** button |
+| Set up local dev keys for Host | `.\MakeDevHostKey.ps1 -LicenseKey <Key> -HostToken <Token>` |
+| Rebuild Host for local dev | Double-click `DevBuildHost.bat` (keys preserved) |
+| Stop running Host process | Double-click `KillHost.bat` |
 | Create a sub-admin | Tenants → + New |
 | Get sub-admin credentials anytime | Tenants → Details |
 | Build Host for a sub-admin | Double-click `BuildHostForSubAdmin.bat` → paste License Key → paste Host Token |

@@ -34,7 +34,7 @@ public partial class MainWindow : Window
     private string _currentRemotePath = "\\";
 
     // View-model collections
-    public ObservableCollection<HostInfoMessage> Nodes { get; } = new();
+    public ObservableCollection<NodeViewModel> Nodes { get; } = new();
     public ObservableCollection<ChatEntry> ChatEntries { get; } = new();
     public ObservableCollection<TenantViewModel> Tenants { get; } = new();
     public ObservableCollection<ProcessInfoData> ProcessItems { get; } = new();
@@ -230,7 +230,7 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             Nodes.Clear();
-            foreach (var host in hosts) Nodes.Add(host);
+            foreach (var host in hosts) Nodes.Add(new NodeViewModel(host));
         });
     }
 
@@ -239,7 +239,7 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             if (Nodes.All(n => n.MachineId != msg.MachineId))
-                Nodes.Add(new HostInfoMessage(msg.MachineId, msg.MachineName, "", true, DateTime.UtcNow, msg.TenantId));
+                Nodes.Add(new NodeViewModel(new HostInfoMessage(msg.MachineId, msg.MachineName, "", true, DateTime.UtcNow, msg.TenantId)));
         });
     }
 
@@ -328,13 +328,14 @@ public partial class MainWindow : Window
             _remoteWidth  = msg.ScreenWidth;
             _remoteHeight = msg.ScreenHeight;
             SessionHostName.Text = $"  {msg.MachineName}";
-            ConnectingOverlay.Visibility      = Visibility.Collapsed;  // hide spinner
+            ConnectingOverlay.Visibility      = Visibility.Collapsed;
             SessionToolbar.Visibility         = Visibility.Visible;
             NoSessionPlaceholder.Visibility   = Visibility.Collapsed;
             RemoteScreenImage.Focus();
             SetSessionTab(0);
-            // Auto-browse remote files root on connection
             _currentRemotePath = "\\";
+            // Mark the active node as connected
+            foreach (var n in Nodes) n.IsConnected = (n.MachineId == msg.MachineId);
         });
     }
 
@@ -436,11 +437,10 @@ public partial class MainWindow : Window
 
     private async void NodeList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_client is null || NodeList.SelectedItem is not HostInfoMessage selectedHost) return;
-        // Show connecting overlay immediately so the user knows something is happening
-        ConnectingLabel.Text      = $"Connecting to {selectedHost.MachineName}...";
+        if (_client is null || NodeList.SelectedItem is not NodeViewModel selectedNode) return;
+        ConnectingLabel.Text         = $"Connecting to {selectedNode.MachineName}...";
         ConnectingOverlay.Visibility = Visibility.Visible;
-        await _client.ConnectToHostAsync(selectedHost.MachineId);
+        await _client.ConnectToHostAsync(selectedNode.MachineId);
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
@@ -461,12 +461,11 @@ public partial class MainWindow : Window
     {
         _activeSessionMachineId = null;
         RemoteScreenImage.Source = null;
-        ConnectingOverlay.Visibility    = Visibility.Collapsed;  // never get stuck
+        ConnectingOverlay.Visibility    = Visibility.Collapsed;
         SessionToolbar.Visibility       = Visibility.Collapsed;
         NoSessionPlaceholder.Visibility = Visibility.Visible;
         MonitorSelector.Visibility = Visibility.Collapsed;
         MonitorSelector.Items.Clear();
-        // Hide all session tabs
         ScreenTab.Visibility    = Visibility.Collapsed;
         ConsolePanel.Visibility = Visibility.Collapsed;
         CodePanel.Visibility    = Visibility.Collapsed;
@@ -480,6 +479,8 @@ public partial class MainWindow : Window
         ProcessItems.Clear();
         RemoteFiles.Clear();
         SilentModeCheckBox.IsChecked = false;
+        // Clear connected state on all nodes
+        foreach (var n in Nodes) n.IsConnected = false;
     }
 
     // ---- Session tab switching ----
@@ -994,4 +995,40 @@ public class TenantViewModel
         AdminToken      = msg.AdminToken;
         HostToken       = msg.HostToken;
     }
+}
+
+/// <summary>
+/// Wraps HostInfoMessage with UI state (IsConnected) for the node list.
+/// </summary>
+public sealed class NodeViewModel : System.ComponentModel.INotifyPropertyChanged
+{
+    private readonly HostInfoMessage _info;
+    private bool _isConnected;
+
+    public NodeViewModel(HostInfoMessage info) => _info = info;
+
+    public string MachineId  => _info.MachineId;
+    public string MachineName => _info.MachineName;
+    public string OsVersion  => _info.OsVersion;
+    public string ShortId    => _info.ShortId;
+    public string TenantId   => _info.TenantId;
+
+    public bool IsConnected
+    {
+        get => _isConnected;
+        set
+        {
+            if (_isConnected == value) return;
+            _isConnected = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsConnected)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(StatusColor)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(StatusTooltip)));
+        }
+    }
+
+    /// <summary>Green = online/available, Blue = active session.</summary>
+    public string StatusColor   => IsConnected ? "#89b4fa" : "#a6e3a1";
+    public string StatusTooltip => IsConnected ? "Connected (active session)" : "Online";
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }

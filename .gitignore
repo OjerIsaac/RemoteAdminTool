@@ -126,8 +126,17 @@ appsettings.Local.json
 Host/appsettings.json
 RelayServer/appsettings.json
 
+## Sensitive keys & tokens
+*.key
+*.token
+host.key
+host.token
+
+## Distribution folders (including date-based subfolders)
+dist/
+Host/dist/
+Viewer/dist/
+
 ## TLS dev certs
 dev-cert.pfx
 *.pfx
-
-dist/*

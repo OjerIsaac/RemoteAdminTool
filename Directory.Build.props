@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Disable online NuGet package vulnerability audit during local/offline builds -->
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+</Project>
