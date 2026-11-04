@@ -570,7 +570,7 @@ public partial class MainWindow : Window
     private void AppendTerminalText(string text, bool isError)
     {
         AppendRichText(ConsoleOutput, text, isError ? "#f38ba8" : "#cdd6f4");
-        ConsoleScroller.ScrollToBottom();
+        ConsoleOutput.ScrollToEnd();
     }
 
     private static void AppendRichText(RichTextBox rtb, string text, string colorHex)
