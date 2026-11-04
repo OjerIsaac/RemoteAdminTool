@@ -186,17 +186,13 @@ public sealed class HostAgent
     private async Task RunSessionAsync(CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        using var clipboard = new ClipboardSyncService();
-
-        if (_stream is not null)
-            clipboard.Start(_stream, cts.Token);
 
         await SendMonitorListAsync(cts.Token);
         await SendDeviceInfoAsync(cts.Token);
         await SendSystemInventoryAsync(cts.Token);
 
         var sendTask = FrameSendLoopAsync(cts.Token);
-        var receiveTask = InputReceiveLoopAsync(clipboard, cts.Token);
+        var receiveTask = InputReceiveLoopAsync(cts.Token);
 
         var finished = await Task.WhenAny(sendTask, receiveTask);
         cts.Cancel();
@@ -307,14 +303,30 @@ public sealed class HostAgent
         if (_stream is null) return;
         try
         {
-            // Special case: empty/root path -> list drives
+            // Resolve special folder shortcuts
+            if (path.Equals("%DESKTOP%", StringComparison.OrdinalIgnoreCase))
+                path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            else if (path.Equals("%DOWNLOADS%", StringComparison.OrdinalIgnoreCase))
+                path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+            else if (path.Equals("%DOCUMENTS%", StringComparison.OrdinalIgnoreCase))
+                path = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            else if (path.Equals("%TEMP%", StringComparison.OrdinalIgnoreCase))
+                path = Path.GetTempPath();
+
+            // Special case: empty/root path -> list all active drives with volume info
             DirectoryEntryData[] entries;
-            if (string.IsNullOrWhiteSpace(path) || path == "\\")
+            if (string.IsNullOrWhiteSpace(path) || path == "\\" || path == "/")
             {
                 entries = DriveInfo.GetDrives()
                     .Where(d => d.IsReady)
-                    .Select(d => new DirectoryEntryData(
-                        d.Name, d.Name, true, 0, DateTime.MinValue))
+                    .Select(d =>
+                    {
+                        var label = string.IsNullOrWhiteSpace(d.VolumeLabel) ? "Local Disk" : d.VolumeLabel;
+                        var freeGb = d.AvailableFreeSpace / 1_073_741_824L;
+                        var totalGb = d.TotalSize / 1_073_741_824L;
+                        var displayName = $"{d.Name} [{label}] ({freeGb} GB free of {totalGb} GB)";
+                        return new DirectoryEntryData(displayName, d.Name, true, d.TotalSize, DateTime.MinValue);
+                    })
                     .ToArray();
                 path = "\\";
             }
@@ -415,7 +427,7 @@ public sealed class HostAgent
         }
     }
 
-    private async Task InputReceiveLoopAsync(ClipboardSyncService clipboard, CancellationToken ct)
+    private async Task InputReceiveLoopAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested && _stream is not null)
         {
@@ -443,19 +455,10 @@ public sealed class HostAgent
                     _input.SendKey(key.VirtualKeyCode, key.Action);
                     break;
 
-                case MessageType.ClipboardSync:
-                    clipboard.HandleIncomingClipboard(payload);
-                    break;
-
                 case MessageType.MonitorSelect:
                     var monSelect = JsonSerializer.Deserialize<MonitorSelectMessage>(payload);
                     _capture.SelectMonitor(monSelect.MonitorIndex);
                     Console.WriteLine($"[HostAgent] Monitor switched to index {monSelect.MonitorIndex}");
-                    break;
-
-                case MessageType.ChatMessage:
-                    var chat = JsonSerializer.Deserialize<ChatMessageData>(payload);
-                    Console.WriteLine($"[Chat] {chat.SenderName}: {chat.Text}");
                     break;
 
                 case MessageType.ShellInput:
@@ -552,6 +555,32 @@ public sealed class HostAgent
     {
         if (_stream is null) return;
 
+        // Special signal: Viewer requests elevating host to administrator
+        if (input == "##ELEVATE_HOST")
+        {
+            try
+            {
+                var exePath = Environment.ProcessPath;
+                if (!string.IsNullOrEmpty(exePath))
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        Verb = "runas",
+                        UseShellExecute = true
+                    };
+                    Process.Start(psi);
+                    Console.WriteLine("[HostAgent] Elevated instance launched, exiting current non-elevated host...");
+                    Environment.Exit(0);
+                }
+            }
+            catch (Exception ex)
+            {
+                await SendShellOutputAsync($"[Elevation Error] Could not elevate host: {ex.Message}\n", isError: true, ct);
+            }
+            return;
+        }
+
         // Special signal: Viewer wants to switch shell type
         if (input.StartsWith("##SHELL_TYPE:"))
         {
@@ -574,6 +603,17 @@ public sealed class HostAgent
         {
             Console.WriteLine($"[Shell] Write error: {ex.Message}");
         }
+    }
+
+    private static bool IsAdministrator()
+    {
+        try
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            var principal = new System.Security.Principal.WindowsPrincipal(identity);
+            return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
     }
 
     private async Task StartShellAsync(CancellationToken ct)
@@ -635,7 +675,15 @@ public sealed class HostAgent
         await MessageFraming.WriteFrameAsync(_stream, MessageType.ShellStarted,
             Array.Empty<byte>(), ct);
 
-        Console.WriteLine($"[Shell] {fileName} process started");
+        bool isAdmin = IsAdministrator();
+        var shellTitle = _shellType == "cmd" ? "Command Prompt (CMD)" : "PowerShell";
+        var banner = isAdmin
+            ? $"[{shellTitle} - ADMINISTRATOR / ELEVATED PRIVILEGES ACTIVE]\n"
+            : $"[{shellTitle} - STANDARD USER / NON-ELEVATED]\n";
+
+        await SendShellOutputAsync(banner, isError: !isAdmin, shellCt);
+
+        Console.WriteLine($"[Shell] {fileName} process started (IsAdmin={isAdmin})");
     }
 
     private async Task SendShellOutputAsync(string text, bool isError, CancellationToken ct)

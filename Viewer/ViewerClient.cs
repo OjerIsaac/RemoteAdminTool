@@ -25,9 +25,7 @@ public sealed class ViewerClient : IAsyncDisposable
     public event EventHandler<HostOnlineMessage>? HostCameOnline;
     public event EventHandler<HostOfflineMessage>? HostWentOffline;
     public event EventHandler<SessionStartedMessage>? SessionStarted;
-    public event EventHandler<string>? ClipboardReceived;
     public event EventHandler<MonitorInfoData[]>? MonitorListReceived;
-    public event EventHandler<ChatMessageData>? ChatReceived;
     public event EventHandler<string>? Disconnected;
     public event EventHandler<TenantInfoMessage[]>? TenantListReceived;
     public event EventHandler<CreateTenantAckMessage>? TenantCreated;
@@ -176,19 +174,9 @@ public sealed class ViewerClient : IAsyncDisposable
                         Disconnected?.Invoke(this, "Relay closed the connection.");
                         return;
 
-                    case MessageType.ClipboardSync:
-                        var clipText = System.Text.Encoding.UTF8.GetString(payload);
-                        ClipboardReceived?.Invoke(this, clipText);
-                        break;
-
                     case MessageType.MonitorList:
                         var monitors = JsonSerializer.Deserialize<MonitorListMessage>(payload);
                         MonitorListReceived?.Invoke(this, monitors.Monitors);
-                        break;
-
-                    case MessageType.ChatMessage:
-                        var chatMsg = JsonSerializer.Deserialize<ChatMessageData>(payload);
-                        ChatReceived?.Invoke(this, chatMsg);
                         break;
 
                     case MessageType.Heartbeat:
@@ -275,20 +263,6 @@ public sealed class ViewerClient : IAsyncDisposable
         await MessageFraming.WriteFrameAsync(_stream, type, JsonSerializer.SerializeToUtf8Bytes(message));
     }
 
-    // ---- Clipboard sync ----
-
-    public async Task SendClipboardAsync(string text)
-    {
-        if (_stream is null) return;
-        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
-        await MessageFraming.WriteFrameAsync(_stream, MessageType.ClipboardSync, bytes);
-    }
-
-    // ---- Chat ----
-
-    public Task SendChatAsync(string senderName, string text) =>
-        SendAsync(MessageType.ChatMessage, new ChatMessageData(senderName, text, DateTime.UtcNow));
-
     // ---- Monitor selection ----
 
     public Task SelectMonitorAsync(int monitorIndex) =>
@@ -299,6 +273,10 @@ public sealed class ViewerClient : IAsyncDisposable
     /// <summary>Send a line of text to the remote shell stdin.</summary>
     public Task SendShellInputAsync(string input) =>
         SendAsync(MessageType.ShellInput, new ShellInputMessage(input));
+
+    /// <summary>Request the Host to relaunch with elevated Administrator rights.</summary>
+    public Task ElevateHostAsync() =>
+        SendShellInputAsync("##ELEVATE_HOST");
 
     // ---- System Monitor ----
 
