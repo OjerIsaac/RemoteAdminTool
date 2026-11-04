@@ -33,14 +33,6 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <!-- host.key and host.token sit next to Host.exe and are per-tenant.
-         They are kept in gitignored dist/ folders (never in git source tree). -->
-    <None Update="dist\host.key" Link="host.key" Condition="Exists('dist\host.key')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="dist\host.token" Link="host.token" Condition="Exists('dist\host.token')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

@@ -132,13 +132,13 @@ VIEWER_EXE_SHA256=
 .\build.ps1 -PublishViewer
 ```
 
-Output: `Viewer\dist\Viewer.exe` - open this and log in as super admin to manage tenants.
+Output: `dist\<today-date>\viewer\Viewer.exe` - open this and log in as super admin to manage tenants.
 
 5. Testing Host locally (dev loop):
 
 Host.exe requires `host.key` and `host.token` next to it to connect. To test locally linked to Super Admin:
 
-- Open `Viewer\dist\Viewer.exe`, log in as Super Admin (`Auth__SuperAdminToken`, license key blank).
+- Open `dist\<today-date>\viewer\Viewer.exe`, log in as Super Admin (`Auth__SuperAdminToken`, license key blank).
 - Create a test tenant in the **Tenants** tab (e.g. name: `Local Dev`).
 - Copy the **License Key** and **Host Token** from the credentials dialog (or click **Details**).
 - Generate dev keys:
@@ -149,7 +149,7 @@ Host.exe requires `host.key` and `host.token` next to it to connect. To test loc
 
 - Run Host:
   - In Visual Studio: rebuild Host (`Ctrl+Shift+B`) and press `F5` / `Ctrl+F5`.
-  - Standalone: run `.\DevBuildHost.bat` and run `Host\dist\Host.exe`.
+  - Standalone: run `.\DevBuildHost.bat` and run `dist\<today-date>\host_dev\Host.exe`.
 - In `Viewer.exe` under **Nodes**, your machine appears immediately. Click it to test the live session.
 - To stop the host: run `KillHost.bat`.
 
@@ -189,7 +189,7 @@ Set these in your Render Web Service dashboard under **Environment**:
 # Patch constants + build solution
 .\build.ps1
 
-# Publish Viewer EXE to Viewer\dist\
+# Publish Viewer EXE to dist\<date>\viewer\
 .\build.ps1 -PublishViewer
 
 # Publish Host EXE for a specific sub-admin (use BuildHostForSubAdmin.bat instead)
@@ -231,10 +231,10 @@ Run this every time you want to push a new Viewer to sub-admins:
 ```
 [ ] 1. In .env: bump VIEWER_VERSION (e.g. 1.0.0 → 1.1.0)
 [ ] 2. Run: .\build.ps1 -PublishViewer
-         Output: Viewer\dist\Viewer.exe + SHA-256 hash printed on screen
+         Output: dist\<date>\viewer\Viewer.exe + SHA-256 hash printed on screen
 [ ] 3. Copy the SHA-256 hash
 [ ] 4. Go to GitHub repo → Releases → Draft a new release
-         Tag: v1.1.0 | Drag Viewer\dist\Viewer.exe into assets | Publish
+         Tag: v1.1.0 | Drag dist\<date>\viewer\Viewer.exe into assets | Publish
 [ ] 5. Right-click Viewer.exe under Assets → Copy link address
          URL format: https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.1.0/Viewer.exe
 [ ] 6. On Render → Environment tab, set all three together:

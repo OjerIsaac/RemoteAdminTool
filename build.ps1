@@ -10,7 +10,7 @@
 # Full workflow when creating a new sub-admin:
 #   1. In the Viewer, create the tenant and copy its LicenseKey AND HostToken
 #   2. Run BuildHostForSubAdmin.bat (it calls this script with both values)
-#   3. Grab Host\dist\Host.exe AND Host\dist\host.key - send BOTH to the sub-admin
+#   3. Grab the complete package in dist\<date>\subadmin_<key>\ - send to the sub-admin
 #   4. Sub-admin shares both files with their users (both must stay in same folder)
 #
 # Auto-update workflow (when you push a new Host/Viewer build):
@@ -142,7 +142,10 @@ function Get-FileSha256([string]$path) {
 if ($PublishViewer -or $PublishAll) {
     Write-Host ""
     Write-Host "Publishing Viewer (Super Admin EXE)..." -ForegroundColor Yellow
-    $distViewer = Join-Path $root "Viewer\dist"
+    $dateStr    = (Get-Date).ToString("yyyy-MM-dd")
+    $distViewer = Join-Path $root "dist\$dateStr\viewer"
+    New-Item -ItemType Directory -Path $distViewer -Force | Out-Null
+
     & dotnet publish "$root\Viewer\Viewer.csproj" -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
         -o $distViewer 2>&1 | Where-Object { $_ -match "error|warning|published" }
@@ -151,14 +154,7 @@ if ($PublishViewer -or $PublishAll) {
         $viewerExe = Join-Path $distViewer "Viewer.exe"
         $viewerHash = Get-FileSha256 $viewerExe
 
-        # Also archive to root dist\YYYY-MM-DD\viewer\
-        $dateStr        = (Get-Date).ToString("yyyy-MM-dd")
-        $viewerDatedDir = Join-Path $root "dist\$dateStr\viewer"
-        New-Item -ItemType Directory -Path $viewerDatedDir -Force | Out-Null
-        Copy-Item $viewerExe (Join-Path $viewerDatedDir "Viewer.exe") -Force
-
-        Write-Host "  Viewer EXE    -> $distViewer\Viewer.exe" -ForegroundColor Green
-        Write-Host "  Date Archive  -> $viewerDatedDir\Viewer.exe" -ForegroundColor Yellow
+        Write-Host "  Viewer EXE -> $distViewer\Viewer.exe" -ForegroundColor Green
         Write-Host ""
         Write-Host "  SHA-256 (paste into Render env var VIEWER_EXE_SHA256):" -ForegroundColor Yellow
         Write-Host "  $viewerHash" -ForegroundColor Cyan
@@ -168,19 +164,23 @@ if ($PublishViewer -or $PublishAll) {
 # ---- Publish Host for a specific sub-admin ----
 if ($PublishHostForTenant) {
     Write-Host ""
-    Write-Host "Publishing Host EXE for sub-admin (LicenseKey=$($PublishHostForTenant.Substring(0,6))...)..." -ForegroundColor Yellow
-    $distHost = Join-Path $root "Host\dist"
+    Write-Host "Publishing Host EXE for sub-admin (LicenseKey=$($PublishHostForTenant.Substring(0, [Math]::Min(6, $PublishHostForTenant.Length)))...)..." -ForegroundColor Yellow
+    $dateStr        = (Get-Date).ToString("yyyy-MM-dd")
+    $tenantPrefix   = $PublishHostForTenant.Substring(0, [Math]::Min(8, $PublishHostForTenant.Length))
+    $distTenantHost = Join-Path $root "dist\$dateStr\subadmin_$tenantPrefix"
+    New-Item -ItemType Directory -Path $distTenantHost -Force | Out-Null
+
     & dotnet publish "$root\Host\Host.csproj" -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-        -o $distHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
+        -o $distTenantHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
     if ($LASTEXITCODE -eq 0) {
         # Keep only Host.exe - remove debug/temp files
-        Get-ChildItem $distHost -Exclude "Host.exe" | Remove-Item -Force -Recurse
+        Get-ChildItem $distTenantHost -Exclude "Host.exe" | Remove-Item -Force -Recurse
 
-        # Copy appsettings.json so local testing picks up UnattendedMode etc.
+        # Copy appsettings.json
         $appSettings = Join-Path $root "Host\appsettings.json"
         if (Test-Path $appSettings) {
-            Copy-Item $appSettings (Join-Path $distHost "appsettings.json") -Force
+            Copy-Item $appSettings (Join-Path $distTenantHost "appsettings.json") -Force
         }
 
         # Write host.key - SHA-256(LicenseKey)
@@ -188,30 +188,16 @@ if ($PublishHostForTenant) {
         $sha256        = [System.Security.Cryptography.SHA256]::Create()
         $hashBytes     = $sha256.ComputeHash($licenseBytes)
         $licenseHash   = [System.BitConverter]::ToString($hashBytes).Replace("-","").ToLowerInvariant()
-        $keyFile       = Join-Path $distHost "host.key"
+        $keyFile       = Join-Path $distTenantHost "host.key"
         Set-Content -Path $keyFile -Encoding UTF8 -NoNewline -Value $licenseHash
 
-        # Write host.token - the per-tenant HostToken (plaintext, same as how host.key works)
-        $tokenFile = Join-Path $distHost "host.token"
+        # Write host.token - the per-tenant HostToken
+        $tokenFile = Join-Path $distTenantHost "host.token"
         Set-Content -Path $tokenFile -Encoding UTF8 -NoNewline -Value $effectiveHostToken
 
         # Compute SHA-256 of the Host.exe itself (for auto-update verification)
-        $hostExe  = Join-Path $distHost "Host.exe"
+        $hostExe  = Join-Path $distTenantHost "Host.exe"
         $hostHash = Get-FileSha256 $hostExe
-
-        # Also archive to root dist\YYYY-MM-DD\subadmin_xxxx\ for easy tracking
-        $dateStr        = (Get-Date).ToString("yyyy-MM-dd")
-        $timeStr        = (Get-Date).ToString("HHmmss")
-        $tenantPrefix   = $PublishHostForTenant.Substring(0, [Math]::Min(8, $PublishHostForTenant.Length))
-        $tenantDatedDir = Join-Path $root "dist\$dateStr\subadmin_${tenantPrefix}_$timeStr"
-        New-Item -ItemType Directory -Path $tenantDatedDir -Force | Out-Null
-
-        Copy-Item (Join-Path $distHost "Host.exe")   (Join-Path $tenantDatedDir "Host.exe") -Force
-        Copy-Item (Join-Path $distHost "host.key")   (Join-Path $tenantDatedDir "host.key") -Force
-        Copy-Item (Join-Path $distHost "host.token") (Join-Path $tenantDatedDir "host.token") -Force
-        if (Test-Path (Join-Path $distHost "appsettings.json")) {
-            Copy-Item (Join-Path $distHost "appsettings.json") (Join-Path $tenantDatedDir "appsettings.json") -Force
-        }
 
         $subAdminReadme = @"
 RemoteAdminTool - Host Agent Package
@@ -225,21 +211,18 @@ INSTRUCTIONS FOR SUB-ADMIN:
 2. They MUST remain together in the exact same folder.
 3. Run Host.exe to start the agent (it will run silently in the system tray).
 "@
-        Set-Content -Path (Join-Path $tenantDatedDir "README_FOR_SUBADMIN.txt") -Encoding UTF8 -Value $subAdminReadme
+        Set-Content -Path (Join-Path $distTenantHost "README_FOR_SUBADMIN.txt") -Encoding UTF8 -Value $subAdminReadme
 
-        Write-Host "  Host EXE      -> $distHost\Host.exe" -ForegroundColor Green
-        Write-Host "  host.key      -> $distHost\host.key  (SHA-256 of LicenseKey)" -ForegroundColor Green
-        Write-Host "  host.token    -> $distHost\host.token (per-tenant HostToken)" -ForegroundColor Green
-        Write-Host "  Date Archive  -> $tenantDatedDir" -ForegroundColor Yellow
+        Write-Host "  Host Package -> $distTenantHost" -ForegroundColor Green
+        Write-Host "  Host.exe     -> $distTenantHost\Host.exe" -ForegroundColor Green
+        Write-Host "  host.key     -> $distTenantHost\host.key  (SHA-256 of LicenseKey)" -ForegroundColor Green
+        Write-Host "  host.token   -> $distTenantHost\host.token (per-tenant HostToken)" -ForegroundColor Green
         Write-Host ""
         Write-Host "  SHA-256 (paste into Render env var HOST_EXE_SHA256):" -ForegroundColor Yellow
         Write-Host "  $hostHash" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "  Ready to send to sub-admin from: $tenantDatedDir" -ForegroundColor Yellow
-        Write-Host "    Host.exe   - the agent (SAME binary for all tenants - auto-update safe)" -ForegroundColor DarkGray
-        Write-Host "    host.key   - hashed license key (tenant-specific)" -ForegroundColor DarkGray
-        Write-Host "    host.token - host auth token   (tenant-specific)" -ForegroundColor DarkGray
-        Write-Host "    All files must stay in the same folder on end-user machines." -ForegroundColor DarkGray
+        Write-Host "  Send ALL files in this folder to the sub-admin:" -ForegroundColor Yellow
+        Write-Host "    $distTenantHost" -ForegroundColor White
     }
 }
 
@@ -247,21 +230,22 @@ INSTRUCTIONS FOR SUB-ADMIN:
 if ($PublishHostDev) {
     Write-Host ""
     Write-Host "Publishing Host EXE for local dev testing (keys preserved)..." -ForegroundColor Yellow
-    $distHost = Join-Path $root "Host\dist"
-    if (-not (Test-Path (Join-Path $distHost "host.key"))) {
-        Write-Error "host.key not found in Host\dist\ - run BuildHostForSubAdmin.bat first to generate keys."
+    $dateStr     = (Get-Date).ToString("yyyy-MM-dd")
+    $distDevHost = Join-Path $root "dist\$dateStr\host_dev"
+    if (-not (Test-Path (Join-Path $distDevHost "host.key"))) {
+        Write-Error "host.key not found in $distDevHost - run MakeDevHostKey.ps1 first to generate keys."
     } else {
         & dotnet publish "$root\Host\Host.csproj" -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-            -o $distHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
+            -o $distDevHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
         if ($LASTEXITCODE -eq 0) {
             # Remove publish artifacts but keep the key files and appsettings
-            Get-ChildItem $distHost -Exclude "Host.exe","host.key","host.token","appsettings.json" | Remove-Item -Force -Recurse
+            Get-ChildItem $distDevHost -Exclude "Host.exe","host.key","host.token","appsettings.json","license_info.txt" | Remove-Item -Force -Recurse
             # Always refresh appsettings.json from source
             $appSettings = Join-Path $root "Host\appsettings.json"
-            if (Test-Path $appSettings) { Copy-Item $appSettings (Join-Path $distHost "appsettings.json") -Force }
-            Write-Host "  Host.exe rebuilt -> $distHost\Host.exe" -ForegroundColor Green
-            Write-Host "  host.key + host.token preserved (no keys needed)" -ForegroundColor DarkGray
+            if (Test-Path $appSettings) { Copy-Item $appSettings (Join-Path $distDevHost "appsettings.json") -Force }
+            Write-Host "  Host.exe rebuilt -> $distDevHost\Host.exe" -ForegroundColor Green
+            Write-Host "  host.key + host.token preserved in $distDevHost" -ForegroundColor DarkGray
         }
     }
 }

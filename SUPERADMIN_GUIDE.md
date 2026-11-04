@@ -15,7 +15,7 @@ Open a PowerShell terminal in `C:\c#-projects\RemoteAdminTool\` and run:
 ```powershell
 .\build.ps1 -PublishViewer
 ```
-This produces `Viewer\dist\Viewer.exe`. This is the app you will use every day.
+This produces `dist\<today-date>\viewer\Viewer.exe`. This is the app you will use every day.
 
 > Run this again any time you update your code and want the latest version.
 
@@ -46,7 +46,7 @@ Four components, three audiences:
 
 ### Opening it
 
-Double-click **Viewer.exe** from `Viewer\dist\Viewer.exe`.
+Double-click **Viewer.exe** from `dist\<today-date>\viewer\Viewer.exe`.
 To (re)publish it: `.\build.ps1 -PublishViewer`
 
 ### Logging in as Super Admin
@@ -95,7 +95,7 @@ Before building and distributing `Host.exe` to real sub-admins, you can run and 
 ---
 
 ### Step 1 - Log into Viewer.exe as Super Admin
-1. Open `Viewer\dist\Viewer.exe` (or press **F5** on the Viewer project in Visual Studio).
+1. Open `dist\<today-date>\viewer\Viewer.exe` (or press **F5** on the Viewer project in Visual Studio).
 2. In **Admin Token**, paste your `Auth__SuperAdminToken` from `.env`.
 3. Leave **License Key** blank.
 4. Click **Connect to Relay**.
@@ -124,8 +124,8 @@ Open PowerShell in `C:\c#-projects\RemoteAdminTool\` and run:
 ```
 
 What this does:
-- Updates `Host\host.key` and `Host\host.token` (used when running/debugging from Visual Studio).
-- Updates `Host\dist\host.key` and `Host\dist\host.token` (used when running the standalone `Host\dist\Host.exe`).
+- Writes `host.key`, `host.token`, and metadata to `dist\<today-date>\host_dev\`.
+- Also updates `Host\bin\Debug\net8.0-windows\` (for Visual Studio debugging).
 
 ---
 
@@ -133,7 +133,7 @@ What this does:
 Choose either method:
 
 * **Method A: Standalone EXE (Quick test)**
-  Double-click `Host\dist\Host.exe` (or run `.\DevBuildHost.bat`).
+  Run `DevBuildHost.bat` (builds `Host.exe` directly into `dist\<today-date>\host_dev\Host.exe`), then run it.
 * **Method B: Visual Studio (Debugging & breakpoints)**
   In Visual Studio, right-click the **Host** project → **Set as Startup Project**, then press **F5** or **Ctrl+F5**.
 
@@ -158,14 +158,14 @@ Choose either method:
 ### Step 6 - Making Code Changes & Retesting (Fast Iteration Loop)
 When you modify code in `Host`:
 1. Double-click `KillHost.bat` to stop any currently running Host process.
-2. Double-click `DevBuildHost.bat` (or rebuild in Visual Studio). It compiles your new changes while preserving your dev keys.
-3. Start `Host\dist\Host.exe` (or press F5 in Visual Studio).
+2. Double-click `DevBuildHost.bat` (or rebuild in Visual Studio). It compiles your new changes while preserving your dev keys in `dist\<today-date>\host_dev\`.
+3. Start `dist\<today-date>\host_dev\Host.exe` (or press F5 in Visual Studio).
 4. Reconnect from Viewer.
 
 When you modify code in `Viewer`:
 1. Close the running Viewer.
 2. Rebuild via Visual Studio or run `.\build.ps1 -PublishViewer`.
-3. Reopen `Viewer\dist\Viewer.exe`.
+3. Reopen `dist\<today-date>\viewer\Viewer.exe`.
 
 ---
 
@@ -203,11 +203,13 @@ The dialog shows four values. Copy them now:
 5. Wait about 1 minute while it builds
 6. When done, the script prints a **SHA-256 hash** - copy it! (you need it in Step 4)
 
-Output files (all three in `Host\dist\`):
+Output files (all in `dist\<today-date>\subadmin_<KeyPrefix>\`):
 ```
-Host\dist\Host.exe    <- the agent binary (SAME for every sub-admin)
-Host\dist\host.key    <- hashed license key (unique to this sub-admin)
-Host\dist\host.token  <- auth token        (unique to this sub-admin)
+Host.exe               <- the agent binary (SAME for every sub-admin)
+host.key               <- hashed license key (unique to this sub-admin)
+host.token             <- auth token        (unique to this sub-admin)
+appsettings.json       <- configuration
+README_FOR_SUBADMIN.txt<- quick instructions
 ```
 
 > `Host.exe` is now a generic binary - it reads the tenant identity from `host.key` and `host.token` at runtime. This means ALL sub-admins share the same EXE and the same SHA-256 hash.
@@ -230,15 +232,15 @@ Host\dist\host.token  <- auth token        (unique to this sub-admin)
 
 ### Step 5 - What to send the sub-admin
 
-Send the sub-admin **five things**:
+Send the sub-admin the complete package from `dist\<today-date>\subadmin_<KeyPrefix>\`:
 
 | What | Where to find it | Purpose |
 |------|-----------------|---------|
-| **Host.exe** | `Host\dist\Host.exe` | They distribute this to every PC they want to control |
-| **host.key** | `Host\dist\host.key` | Hashed license - must stay in the same folder as Host.exe |
-| **host.token** | `Host\dist\host.token` | Auth token - must stay in the same folder as Host.exe |
+| **Host.exe** | `dist\<date>\subadmin_...\Host.exe` | They distribute this to every PC they want to control |
+| **host.key** | `dist\<date>\subadmin_...\host.key` | Hashed license - must stay in the same folder as Host.exe |
+| **host.token** | `dist\<date>\subadmin_...\host.token` | Auth token - must stay in the same folder as Host.exe |
 | **Admin Token** | From the credentials dialog (Step 2) | They paste this into Viewer.exe to log in |
-| **Viewer.exe** | `Viewer\dist\Viewer.exe` | Same app you use - works for sub-admins too |
+| **Viewer.exe** | `dist\<date>\viewer\Viewer.exe` | Same app you use - works for sub-admins too |
 
 > **Critical:** `Host.exe`, `host.key`, and `host.token` must always be in the same folder on every end-user machine. If either file is missing, `Host.exe` will exit immediately with an error.
 
@@ -335,13 +337,13 @@ Run `BuildHostForSubAdmin.bat` with **any** existing tenant's credentials. Or us
 ```powershell
 .\build.ps1 -PublishHostForTenant <LicenseKey> -HostToken <HostToken>
 ```
-This produces `Host\dist\Host.exe`.
+This produces `dist\<today-date>\subadmin_<KeyPrefix>\Host.exe`.
 
 > For auto-update purposes, the new `Host.exe` works for **all tenants** once downloaded - the new binary re-reads `host.key` from disk. You only need to build once.
 
 At the end, the script prints:
 ```
-Host EXE -> Host\dist\Host.exe
+Host.exe -> dist\<date>\subadmin_<KeyPrefix>\Host.exe
 
 SHA-256 (paste into Render env var HOST_EXE_SHA256):
   a3f8c2d91e0b4c7f...  (64 hex characters)
@@ -358,7 +360,7 @@ The `HOST_DOWNLOAD_URL` is the **direct download link** to your `Host.exe` file 
 2. Click **Draft a new release**
 3. Click **Choose a tag** → type `v1.0.1` → click **Create new tag: v1.0.1**
 4. Give it a title (e.g. `v1.0.1 - Host update`)
-5. Under **Attach binaries**, drag and drop `Host\dist\Host.exe`
+5. Under **Attach binaries**, drag and drop `Host.exe` from `dist\<today-date>\subadmin_...`
 6. Click **Publish release**
 7. After publishing, find `Host.exe` listed under **Assets** → right-click it → **Copy link address**
 
@@ -462,7 +464,7 @@ Open PowerShell in `C:\c#-projects\RemoteAdminTool\` and run:
 .\build.ps1 -PublishViewer
 ```
 
-This produces `Viewer\dist\Viewer.exe` and prints at the end:
+This produces `dist\<today-date>\viewer\Viewer.exe` and prints at the end:
 ```
   SHA-256 (paste into Render env var VIEWER_EXE_SHA256):
   a3f8c2d91e0b4c7f...  (64 hex characters)
@@ -480,8 +482,8 @@ This is where sub-admins' machines download the update from. GitHub Releases is 
 2. Click **Draft a new release**
 3. Click **Choose a tag** → type `v1.1.0` → click **Create new tag: v1.1.0**
 4. Title: `v1.1.0 - Viewer update` (or whatever describes the changes)
-5. Under the description box, drag and drop **`Viewer\dist\Viewer.exe`** into the assets area
-6. If you are also releasing a new Host.exe at the same time, drag **`Host\dist\Host.exe`** here too
+5. Under the description box, drag and drop **`dist\<today-date>\viewer\Viewer.exe`** into the assets area
+6. If you are also releasing a new Host.exe at the same time, drag **`Host.exe`** from `dist\<today-date>\subadmin_...` here too
 7. Click **Publish release**
 8. After publishing, scroll down to **Assets** → right-click **Viewer.exe** → **Copy link address**
 
@@ -536,7 +538,7 @@ Next time any sub-admin launches their `Viewer.exe`:
 
 | Situation | What to do with `VIEWER_DOWNLOAD_URL` |
 |-----------|--------------------------------------|
-| Sub-admins don't have Viewer.exe yet | Send them `Viewer\dist\Viewer.exe` manually - first distribution only |
+| Sub-admins don't have Viewer.exe yet | Send them `dist\<date>\viewer\Viewer.exe` manually - first distribution only |
 | You haven't set up GitHub Releases yet | Leave `VIEWER_DOWNLOAD_URL` blank - auto-update disabled, no error |
 | First time setting up auto-update | Follow Steps 1-4 above exactly |
 | New feature release | Bump version → build → upload to new release tag → update all 3 Render vars |
@@ -672,19 +674,19 @@ Render automatically redeploys. Takes about 2 minutes. Schema migrations run aut
 
 | Task | Action |
 |------|--------|
-| Open your admin app | Double-click `Viewer\dist\Viewer.exe` |
+| Open your admin app | Double-click `dist\<today-date>\viewer\Viewer.exe` |
 | Log in as super admin | Admin Token = `Auth__SuperAdminToken` from `.env`, License Key = blank |
 | Log out | Click red **Logout** button |
 | Set up local dev keys for Host | `.\MakeDevHostKey.ps1 -LicenseKey <Key> -HostToken <Token>` |
-| Rebuild Host for local dev | Double-click `DevBuildHost.bat` (keys preserved) |
+| Rebuild Host for local dev | Double-click `DevBuildHost.bat` (keys preserved in `dist\<date>\host_dev\`) |
 | Stop running Host process | Double-click `KillHost.bat` |
 | Create a sub-admin | Tenants → + New |
 | Get sub-admin credentials anytime | Tenants → Details |
 | Build Host for a sub-admin | Double-click `BuildHostForSubAdmin.bat` → paste License Key → paste Host Token |
-| Files to send sub-admin | `Host.exe` + `host.key` + `Viewer.exe` + Admin Token |
+| Files to send sub-admin | Package in `dist\<date>\subadmin_<Key>\` + Admin Token |
 | Suspend a sub-admin | Tenants → Suspend |
 | Resume a sub-admin | Tenants → Resume |
 | Push Host update silently | Bump `HOST_VERSION` → build → upload → update Render: `HOST_DOWNLOAD_URL` + `HOST_EXE_SHA256` + `HOST_VERSION` |
-| Push Viewer update silently | 1. Bump `VIEWER_VERSION` in `.env` → 2. `build.ps1 -PublishViewer` → 3. Upload `Viewer\dist\Viewer.exe` to new GitHub Release → 4. Update Render: `VIEWER_VERSION` + `VIEWER_DOWNLOAD_URL` + `VIEWER_EXE_SHA256` → Save |
+| Push Viewer update silently | 1. Bump `VIEWER_VERSION` in `.env` → 2. `build.ps1 -PublishViewer` → 3. Upload `dist\<date>\viewer\Viewer.exe` to new GitHub Release → 4. Update Render: `VIEWER_VERSION` + `VIEWER_DOWNLOAD_URL` + `VIEWER_EXE_SHA256` → Save |
 | Deploy relay server update | `git push origin main` |
 | Update SHA-256 after a publish | Copy hash printed by `build.ps1` → Render Environment → `HOST_EXE_SHA256` or `VIEWER_EXE_SHA256` → Save |

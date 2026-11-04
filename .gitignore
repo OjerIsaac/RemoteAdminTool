@@ -10,8 +10,7 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
-Host/dist/
-Viewer/dist/
+dist/
 
 ## Visual Studio
 .vs/
@@ -134,8 +133,6 @@ host.token
 
 ## Distribution folders (including date-based subfolders)
 dist/
-Host/dist/
-Viewer/dist/
 
 ## TLS dev certs
 dev-cert.pfx
