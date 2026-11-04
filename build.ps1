@@ -25,6 +25,7 @@
 param(
     [string]$PublishHostForTenant = "",   # LicenseKey for a specific sub-admin
     [string]$HostToken            = "",   # Per-tenant HostToken (from Viewer Details dialog)
+    [string]$TenantName           = "",   # Optional display name (e.g. AcmeCorp) for folder naming
     [switch]$PublishViewer,
     [switch]$PublishHostDev,              # Rebuild Host.exe only - keeps existing host.key/host.token
     [switch]$PublishAll
@@ -167,7 +168,9 @@ if ($PublishHostForTenant) {
     Write-Host "Publishing Host EXE for sub-admin (LicenseKey=$($PublishHostForTenant.Substring(0, [Math]::Min(6, $PublishHostForTenant.Length)))...)..." -ForegroundColor Yellow
     $dateStr        = (Get-Date).ToString("yyyy-MM-dd")
     $tenantPrefix   = $PublishHostForTenant.Substring(0, [Math]::Min(8, $PublishHostForTenant.Length))
-    $distTenantHost = Join-Path $root "dist\$dateStr\subadmin_$tenantPrefix"
+    $cleanName      = if ($TenantName) { ($TenantName -replace '[^a-zA-Z0-9_\-]', '') + "_" } else { "" }
+    $folderName     = "subadmin_${cleanName}${tenantPrefix}"
+    $distTenantHost = Join-Path $root "dist\$dateStr\$folderName"
     New-Item -ItemType Directory -Path $distTenantHost -Force | Out-Null
 
     & dotnet publish "$root\Host\Host.csproj" -c Release -r win-x64 --self-contained true `
@@ -199,30 +202,42 @@ if ($PublishHostForTenant) {
         $hostExe  = Join-Path $distTenantHost "Host.exe"
         $hostHash = Get-FileSha256 $hostExe
 
+        $displayNameLine = if ($TenantName) { "Tenant / Client:    $TenantName`n" } else { "" }
         $subAdminReadme = @"
 RemoteAdminTool - Host Agent Package
 Generated:          $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+$displayNameLine
 Tenant License Key: $PublishHostForTenant
 Host Auth Token:    $effectiveHostToken
 Host EXE SHA-256:   $hostHash
 
-INSTRUCTIONS FOR SUB-ADMIN:
-1. Copy ALL files in this folder (Host.exe, host.key, host.token, appsettings.json) to the target machine.
-2. They MUST remain together in the exact same folder.
+INSTRUCTIONS FOR SUB-ADMIN / END-USER:
+1. Extract ALL files in this folder to the target machine.
+2. They MUST remain together in the exact same folder (Host.exe, host.key, host.token, appsettings.json).
 3. Run Host.exe to start the agent (it will run silently in the system tray).
 "@
         Set-Content -Path (Join-Path $distTenantHost "README_FOR_SUBADMIN.txt") -Encoding UTF8 -Value $subAdminReadme
+
+        # Also create a ready-to-share .zip file
+        $prevProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        $zipBase = if ($TenantName) { ($TenantName -replace '[^a-zA-Z0-9_\-]', '') + "_Host_Package.zip" } else { "subadmin_${tenantPrefix}_Host_Package.zip" }
+        $zipPath = Join-Path $distTenantHost $zipBase
+        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+        Compress-Archive -Path (Join-Path $distTenantHost "*") -DestinationPath $zipPath -Force
+        $ProgressPreference = $prevProgress
 
         Write-Host "  Host Package -> $distTenantHost" -ForegroundColor Green
         Write-Host "  Host.exe     -> $distTenantHost\Host.exe" -ForegroundColor Green
         Write-Host "  host.key     -> $distTenantHost\host.key  (SHA-256 of LicenseKey)" -ForegroundColor Green
         Write-Host "  host.token   -> $distTenantHost\host.token (per-tenant HostToken)" -ForegroundColor Green
+        Write-Host "  ZIP Package  -> $zipPath" -ForegroundColor Cyan
         Write-Host ""
         Write-Host "  SHA-256 (paste into Render env var HOST_EXE_SHA256):" -ForegroundColor Yellow
         Write-Host "  $hostHash" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "  Send ALL files in this folder to the sub-admin:" -ForegroundColor Yellow
-        Write-Host "    $distTenantHost" -ForegroundColor White
+        Write-Host "  Ready to send to sub-admin (share folder or ZIP):" -ForegroundColor Yellow
+        Write-Host "    $zipPath" -ForegroundColor White
     }
 }
 

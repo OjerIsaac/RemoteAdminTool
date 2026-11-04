@@ -198,21 +198,23 @@ The dialog shows four values. Copy them now:
 
 1. Go to your project folder: `C:\c#-projects\RemoteAdminTool\`
 2. Double-click **BuildHostForSubAdmin.bat**
-3. When prompted, paste the **License Key** → press **Enter**
-4. When prompted, paste the **Host Token** → press **Enter**
-5. Wait about 1 minute while it builds
-6. When done, the script prints a **SHA-256 hash** - copy it! (you need it in Step 4)
+3. Type the **Sub-Admin / Company Name** (e.g. `AcmeCorp`) → press **Enter**
+4. Paste the **License Key** → press **Enter**
+5. Paste the **Host Token** → press **Enter**
+6. Wait about 1 minute while it builds
+7. When done, the script prints a **SHA-256 hash** - copy it! (you need it in Step 4)
 
-Output files (all in `dist\<today-date>\subadmin_<KeyPrefix>\`):
+Output files (in `dist\<today-date>\subadmin_<Name>_<KeyPrefix>\`):
 ```
-Host.exe               <- the agent binary (SAME for every sub-admin)
-host.key               <- hashed license key (unique to this sub-admin)
-host.token             <- auth token        (unique to this sub-admin)
-appsettings.json       <- configuration
-README_FOR_SUBADMIN.txt<- quick instructions
+AcmeCorp_Host_Package.zip  <- ready-to-share ZIP file containing everything below!
+Host.exe                   <- the agent binary
+host.key                   <- hashed license key (unique to this sub-admin)
+host.token                 <- auth token        (unique to this sub-admin)
+appsettings.json           <- configuration
+README_FOR_SUBADMIN.txt    <- instructions for the client
 ```
 
-> `Host.exe` is now a generic binary - it reads the tenant identity from `host.key` and `host.token` at runtime. This means ALL sub-admins share the same EXE and the same SHA-256 hash.
+> `Host.exe` is a generic binary - it reads the tenant identity from `host.key` and `host.token` at runtime. This means ALL sub-admins share the same EXE and the same SHA-256 hash.
 
 ### Step 4 - Update Render with the SHA-256 hash
 
@@ -232,13 +234,11 @@ README_FOR_SUBADMIN.txt<- quick instructions
 
 ### Step 5 - What to send the sub-admin
 
-Send the sub-admin the complete package from `dist\<today-date>\subadmin_<KeyPrefix>\`:
+Send the sub-admin the ZIP file (or folder) from `dist\<today-date>\subadmin_<Name>_<KeyPrefix>\`:
 
 | What | Where to find it | Purpose |
 |------|-----------------|---------|
-| **Host.exe** | `dist\<date>\subadmin_...\Host.exe` | They distribute this to every PC they want to control |
-| **host.key** | `dist\<date>\subadmin_...\host.key` | Hashed license - must stay in the same folder as Host.exe |
-| **host.token** | `dist\<date>\subadmin_...\host.token` | Auth token - must stay in the same folder as Host.exe |
+| **Host Package (ZIP)** | `dist\<date>\subadmin_...\<Name>_Host_Package.zip` | Complete ready-to-send package (or send the individual files) |
 | **Admin Token** | From the credentials dialog (Step 2) | They paste this into Viewer.exe to log in |
 | **Viewer.exe** | `dist\<date>\viewer\Viewer.exe` | Same app you use - works for sub-admins too |
 
