@@ -406,11 +406,12 @@
                                           VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
-                        <Button x:Name="DisconnectSessionButton" Content="Disconnect"
+                        <Button x:Name="DisconnectSessionButton" Content="End Session"
                                 Click="DisconnectSessionButton_Click"
                                 Style="{StaticResource SidebarButton}"
                                 Background="#f38ba8" Foreground="#1e1e2e" FontWeight="SemiBold"
-                                Padding="12,4"/>
+                                Padding="12,4"
+                                ToolTip="Ends the active remote session and returns to dashboard. Remote host remains online."/>
                     </StackPanel>
                 </DockPanel>
             </Border>

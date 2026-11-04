@@ -174,7 +174,9 @@ public sealed class HostAgent
                     break;
 
                 case MessageType.Disconnect:
-                    return;
+                case MessageType.DisconnectFromHost:
+                    Console.WriteLine("[HostAgent] Session disconnect signal received while in idle - Host remains permanently online");
+                    break;
             }
         }
     }
