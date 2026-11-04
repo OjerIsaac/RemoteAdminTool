@@ -459,27 +459,60 @@ public partial class MainWindow : Window
     private void EndSessionUI()
     {
         _activeSessionMachineId = null;
+        _remoteWidth = 0;
+        _remoteHeight = 0;
+        SessionHostName.Text = "";
         RemoteScreenImage.Source = null;
+        CursorDot.Visibility = Visibility.Collapsed;
+
         ConnectingOverlay.Visibility    = Visibility.Collapsed;
         SessionToolbar.Visibility       = Visibility.Collapsed;
         NoSessionPlaceholder.Visibility = Visibility.Visible;
+
         MonitorSelector.Visibility = Visibility.Collapsed;
         MonitorSelector.Items.Clear();
+
         ScreenTab.Visibility    = Visibility.Collapsed;
         ConsolePanel.Visibility = Visibility.Collapsed;
         CodePanel.Visibility    = Visibility.Collapsed;
         FilesPanel.Visibility   = Visibility.Collapsed;
         DevicePanel.Visibility  = Visibility.Collapsed;
         MonitorPanel.Visibility = Visibility.Collapsed;
-        RemoteScreenImage.Visibility = Visibility.Visible;
-        ScreenTab.Visibility    = Visibility.Visible;
+
         ConsoleOutput.Document.Blocks.Clear();
         CodeOutput.Document.Blocks.Clear();
         RemoteFiles.Clear();
+
+        // Clear Device Info display
+        DevMachineName.Text  = "";
+        DevUsername.Text     = "";
+        DevOsVersion.Text    = "";
+        DevOsBuild.Text      = "";
+        DevUptime.Text       = "";
+        DevCpu.Text          = "";
+        DevCores.Text        = "";
+        DevRam.Text          = "";
+        DevSystemDrive.Text  = "";
+        DevDriveFree.Text    = "";
+        DevDriveTotal.Text   = "";
+        DevIpAddresses.Text  = "";
+
+        // Reset monitor data
         _monitorViewModel = new MonitorViewModel();
         MonitorPanel.DataContext = _monitorViewModel;
         SilentModeCheckBox.IsChecked = false;
-        // Clear connected state on all nodes
+
+        // Reset tab highlights to Screen as default
+        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabCodeBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            buttons[i].Background = i == 0 ? ColorBrush("#89b4fa") : ColorBrush("Transparent");
+            buttons[i].Foreground = i == 0 ? ColorBrush("#1e1e2e") : ColorBrush("#cdd6f4");
+            buttons[i].FontWeight = i == 0 ? FontWeights.SemiBold : FontWeights.Normal;
+        }
+
+        // Clear connected state and selection in node list so the node can be re-selected immediately
+        NodeList.SelectedIndex = -1;
         foreach (var n in Nodes) n.IsConnected = false;
     }
 
