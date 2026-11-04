@@ -65,6 +65,11 @@ public enum MessageType : byte
     // ---- Silent mode ----
     SetSilentMode = 93,         // Viewer -> Host: request to toggle silent (no consent) mode
 
+    // ---- System Inventory & Control ----
+    SystemInventory = 94,       // Host -> Viewer: rich hardware inventory (motherboard, RAM sticks, disks, GPU, etc.)
+    KillProcess     = 95,       // Viewer -> Host: request to terminate process by PID
+    DeviceInfoRequest = 96,     // Viewer -> Host: request fresh DeviceInfo + SystemInventory
+
     // ---- File Manager ----
     DirectoryList         = 100, // Viewer -> Host: list contents of a remote path
     DirectoryListResponse = 101, // Host -> Viewer: directory entries
@@ -294,16 +299,47 @@ public readonly record struct ShellOutputMessage(string Text, bool IsError);
 /// <summary>Viewer asks the Host to start or stop sending SystemStats.</summary>
 public readonly record struct StatsRequestMessage(bool Enable);
 
+/// <summary>Per-volume live storage usage.</summary>
+public readonly record struct VolumeUsageData(
+    string DriveLetter,
+    long TotalBytes,
+    long FreeBytes,
+    long UsedBytes,
+    double UsedPercent
+);
+
+/// <summary>Per-physical-disk live I/O metrics.</summary>
+public readonly record struct DiskIoData(
+    string DiskName,
+    double ReadBytesPerSec,
+    double WriteBytesPerSec
+);
+
+/// <summary>Per-network-interface live throughput.</summary>
+public readonly record struct NetworkTrafficData(
+    string AdapterName,
+    double BytesReceivedPerSec,
+    double BytesSentPerSec
+);
+
 /// <summary>A snapshot of system health sent by the Host every ~2 seconds.</summary>
 public readonly record struct SystemStatsMessage(
     double CpuPercent,
+    float[] PerCoreCpu,
     long RamUsedMb,
     long RamTotalMb,
+    long TotalRamBytes,
+    long UsedRamBytes,
+    long AvailableRamBytes,
     double DiskReadMbps,
     double DiskWriteMbps,
     double NetSentMbps,
     double NetRecvMbps,
-    ProcessInfoData[] TopProcesses
+    VolumeUsageData[] Volumes,
+    DiskIoData[] Disks,
+    NetworkTrafficData[] NetworkAdapters,
+    ProcessInfoData[] TopProcesses,
+    long UptimeSeconds
 );
 
 public readonly record struct ProcessInfoData(
@@ -312,6 +348,90 @@ public readonly record struct ProcessInfoData(
     double CpuPercent,
     long RamMb
 );
+
+// ---- System Inventory (Hardware specs & topology) ----
+
+public readonly record struct CpuInfoData(
+    string Name,
+    string Architecture,
+    int PhysicalCores,
+    int LogicalCores,
+    int MaxClockSpeedMhz,
+    string L2CacheSize,
+    string L3CacheSize,
+    string Socket
+);
+
+public readonly record struct MemoryModuleData(
+    string BankLabel,
+    string DeviceLocator,
+    long CapacityBytes,
+    int SpeedMhz,
+    string Manufacturer,
+    string PartNumber,
+    string MemoryType
+);
+
+public readonly record struct PhysicalDiskData(
+    int Index,
+    string Model,
+    string InterfaceType,
+    long SizeBytes,
+    string MediaType, // SSD, HDD, NVMe
+    string SerialNumber
+);
+
+public readonly record struct VolumeData(
+    string DriveLetter,
+    string Label,
+    string FileSystem,
+    long TotalBytes,
+    long FreeBytes,
+    string DriveType // Fixed, Removable, Network, CD-ROM
+);
+
+public readonly record struct NetworkAdapterData(
+    string Id,
+    string Name,
+    string Description,
+    string MacAddress,
+    string AdapterType,
+    long SpeedBps,
+    string[] IPv4Addresses,
+    string[] IPv6Addresses,
+    string[] Gateways,
+    string[] DnsServers,
+    bool IsDhcpEnabled
+);
+
+public readonly record struct GpuData(
+    string Name,
+    string DriverVersion,
+    long VideoMemoryBytes,
+    string CurrentResolution,
+    int RefreshRateHz
+);
+
+public readonly record struct BatteryData(
+    int EstimatedChargePercent,
+    string BatteryStatus,
+    int EstimatedRunTimeMinutes
+);
+
+public readonly record struct SystemInventoryMessage(
+    string MotherboardManufacturer,
+    string MotherboardProduct,
+    string BiosVersion,
+    CpuInfoData Cpu,
+    MemoryModuleData[] MemoryModules,
+    PhysicalDiskData[] PhysicalDisks,
+    VolumeData[] Volumes,
+    NetworkAdapterData[] NetworkAdapters,
+    GpuData[] Gpus,
+    BatteryData? Battery
+);
+
+public readonly record struct KillProcessMessage(int Pid);
 
 // ---- Device Info ----
 

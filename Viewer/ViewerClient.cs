@@ -37,6 +37,7 @@ public sealed class ViewerClient : IAsyncDisposable
     public event EventHandler? ShellStarted;
     public event EventHandler? ShellEnded;
     public event EventHandler<SystemStatsMessage>? SystemStatsReceived;
+    public event EventHandler<SystemInventoryMessage>? SystemInventoryReceived;
 
     // ---- New feature events ----
     public event EventHandler<DeviceInfoMessage>? DeviceInfoReceived;
@@ -224,6 +225,11 @@ public sealed class ViewerClient : IAsyncDisposable
                         SystemStatsReceived?.Invoke(this, stats);
                         break;
 
+                    case MessageType.SystemInventory:
+                        var inventory = JsonSerializer.Deserialize<SystemInventoryMessage>(payload);
+                        SystemInventoryReceived?.Invoke(this, inventory);
+                        break;
+
                     // ---- Device Info ----
                     case MessageType.DeviceInfo:
                         var deviceInfo = JsonSerializer.Deserialize<DeviceInfoMessage>(payload);
@@ -299,6 +305,14 @@ public sealed class ViewerClient : IAsyncDisposable
     /// <summary>Ask the Host to start or stop streaming system stats.</summary>
     public Task SendStatsRequestAsync(bool enable) =>
         SendAsync(MessageType.StatsRequest, new StatsRequestMessage(enable));
+
+    /// <summary>Request the Host to terminate a process by PID.</summary>
+    public Task SendKillProcessAsync(int pid) =>
+        SendAsync(MessageType.KillProcess, new KillProcessMessage(pid));
+
+    /// <summary>Request fresh DeviceInfo and SystemInventory snapshots from the host.</summary>
+    public Task RequestDeviceInfoAsync() =>
+        SendAsync(MessageType.DeviceInfoRequest, Array.Empty<byte>());
 
     // ---- Silent mode ----
 

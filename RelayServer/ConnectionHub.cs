@@ -187,21 +187,26 @@ public sealed class ConnectionHub
 
         try
         {
-            await HostIdleLoopAsync(host, ct);
+            await HostReadLoopAsync(host, ct);
         }
-        catch (OperationCanceledException) when (host.InSession)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Normal: idle loop was cancelled because a session started.
-            // SessionRelay now owns host.Stream - do nothing here.
+            Console.WriteLine($"[Hub] Host read loop error for {register.MachineName}: {ex.Message}");
         }
         finally
         {
             tenantHosts.TryRemove(register.MachineId, out _);
             Console.WriteLine($"[Hub] Host disconnected: {register.MachineName} ({register.MachineId})");
 
-            // Only broadcast offline if the host genuinely disconnected (not handed to a session).
-            if (!host.InSession)
-                await NotifyAdminHostOfflineAsync(host, tenant, ct);
+            // If an active session was attached to this host, stop it
+            if (host.ActiveSession != null)
+            {
+                var s = host.ActiveSession;
+                host.ActiveSession = null;
+                s.Stop();
+            }
+
+            await NotifyAdminHostOfflineAsync(host, tenant, ct);
         }
     }
 
@@ -220,24 +225,27 @@ public sealed class ConnectionHub
             ?? throw new InvalidOperationException("Auth__HostToken not configured and tenant has no HostToken");
     }
 
-    private async Task HostIdleLoopAsync(ConnectedHost host, CancellationToken ct)
+    private async Task HostReadLoopAsync(ConnectedHost host, CancellationToken ct)
     {
-        // Link the external cancellation token with the host's own idle-loop token.
-        // StartSessionAsync cancels IdleLoopCts to abort the blocking ReadFrameAsync
-        // call immediately, handing sole stream ownership to SessionRelay.
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, host.IdleLoopCts.Token);
-        var loopCt = linked.Token;
-
-        while (!loopCt.IsCancellationRequested && host.WebSocket.State == WebSocketState.Open)
+        while (!ct.IsCancellationRequested && host.WebSocket.State == WebSocketState.Open)
         {
-            var (type, payload) = await MessageFraming.ReadFrameAsync(host.Stream, loopCt);
+            var (type, payload) = await MessageFraming.ReadFrameAsync(host.Stream, ct);
             switch (type)
             {
                 case MessageType.Heartbeat:
                     host.LastHeartbeat = DateTime.UtcNow;
                     break;
+
                 case MessageType.Disconnect:
                     return;
+
+                default:
+                    var session = host.ActiveSession;
+                    if (session != null)
+                    {
+                        await session.ForwardToAdminAsync(type, payload, ct);
+                    }
+                    break;
             }
         }
     }
@@ -402,24 +410,23 @@ public sealed class ConnectionHub
         if (_activeSessions.TryRemove(admin.TenantId, out var old))
             old.Stop();
 
+        // If this host is already in a session with another admin, stop that session
+        if (host.ActiveSession != null)
+        {
+            var prevSession = host.ActiveSession;
+            host.ActiveSession = null;
+            prevSession.Stop();
+        }
+
         Console.WriteLine($"[Hub] Starting session: Admin ({admin.TenantId}) <-> {host.MachineName}");
 
-        // Cancel the idle loop's token FIRST so ReadFrameAsync unblocks immediately
-        // via OperationCanceledException. Only then does SessionRelay start reading
-        // host.Stream - eliminating the dual-reader race condition.
-        host.InSession = true;
-        host.IdleLoopCts.Cancel();
-
-        // Small yield to let the idle loop's catch/finally run before we start the relay.
-        await Task.Yield();
+        var relay = new SessionRelay(admin, host);
+        host.ActiveSession = relay;
+        _activeSessions[admin.TenantId] = relay;
 
         var hostNotify = new SessionStartedMessage(machineId, host.MachineName, 0, 0);
         await MessageFraming.WriteFrameAsync(host.Stream, MessageType.SessionStarted,
             JsonSerializer.SerializeToUtf8Bytes(hostNotify), ct);
-
-        var relay = new SessionRelay(admin, host);
-        _activeSessions[admin.TenantId] = relay;
-        _ = relay.RunHostToAdminRelayAsync(ct);
 
         var adminNotify = new SessionStartedMessage(machineId, host.MachineName, 0, 0);
         await MessageFraming.WriteFrameAsync(admin.Stream, MessageType.SessionStarted,
@@ -552,16 +559,7 @@ public sealed class ConnectedHost
     public required WebSocketStreamAdapter Stream { get; init; }
     public DateTime ConnectedAt { get; init; }
     public DateTime LastHeartbeat { get; set; } = DateTime.UtcNow;
-    /// <summary>
-    /// Cancels the idle loop's ReadFrameAsync so SessionRelay can take
-    /// sole ownership of the host stream without a dual-reader race.
-    /// </summary>
-    public CancellationTokenSource IdleLoopCts { get; } = new();
-    /// <summary>
-    /// True once a session starts. Suppresses the spurious HostOffline
-    /// broadcast that would otherwise remove the node from the admin's list.
-    /// </summary>
-    public bool InSession { get; set; }
+    public SessionRelay? ActiveSession { get; set; }
 }
 
 public sealed class ConnectedAdmin

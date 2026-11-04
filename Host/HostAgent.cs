@@ -193,6 +193,7 @@ public sealed class HostAgent
 
         await SendMonitorListAsync(cts.Token);
         await SendDeviceInfoAsync(cts.Token);
+        await SendSystemInventoryAsync(cts.Token);
 
         var sendTask = FrameSendLoopAsync(cts.Token);
         var receiveTask = InputReceiveLoopAsync(clipboard, cts.Token);
@@ -283,6 +284,21 @@ public sealed class HostAgent
         catch (Exception ex)
         {
             Console.WriteLine($"[DeviceInfo] Failed to collect: {ex.Message}");
+        }
+    }
+
+    private async Task SendSystemInventoryAsync(CancellationToken ct)
+    {
+        if (_stream is null) return;
+        try
+        {
+            var inventory = SystemInventoryCollector.Collect();
+            await MessageFraming.WriteFrameAsync(_stream, MessageType.SystemInventory,
+                JsonSerializer.SerializeToUtf8Bytes(inventory), ct);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SystemInventory] Failed to collect: {ex.Message}");
         }
     }
 
@@ -451,6 +467,25 @@ public sealed class HostAgent
                     var statsReq = JsonSerializer.Deserialize<StatsRequestMessage>(payload);
                     if (statsReq.Enable) StartStats(ct);
                     else StopStats();
+                    break;
+
+                case MessageType.DeviceInfoRequest:
+                    await SendDeviceInfoAsync(ct);
+                    await SendSystemInventoryAsync(ct);
+                    break;
+
+                case MessageType.KillProcess:
+                    var killReq = JsonSerializer.Deserialize<KillProcessMessage>(payload);
+                    try
+                    {
+                        var proc = Process.GetProcessById(killReq.Pid);
+                        proc.Kill(entireProcessTree: true);
+                        Console.WriteLine($"[HostAgent] Terminated process {killReq.Pid} ({proc.ProcessName})");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[HostAgent] Failed to kill process {killReq.Pid}: {ex.Message}");
+                    }
                     break;
 
                 case MessageType.SetSilentMode:
@@ -634,7 +669,12 @@ public sealed class HostAgent
     {
         StopStats();
         _statsCts = CancellationTokenSource.CreateLinkedTokenSource(sessionCt);
-        _ = StatsLoopAsync(_statsCts.Token);
+        _ = Task.Run(async () =>
+        {
+            await SendDeviceInfoAsync(_statsCts.Token);
+            await SendSystemInventoryAsync(_statsCts.Token);
+            await StatsLoopAsync(_statsCts.Token);
+        }, _statsCts.Token);
     }
 
     private void StopStats()
@@ -646,63 +686,15 @@ public sealed class HostAgent
 
     private async Task StatsLoopAsync(CancellationToken ct)
     {
-        // CPU counter needs a 1-second warm-up sample
-        using var cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-        cpuCounter.NextValue(); // discard first reading
+        using var sampler = new SystemStatsSampler();
+        // Warm-up delay for initial sample delta
         await Task.Delay(1000, ct);
-
-        // Disk and network counters
-        using var diskReadCounter  = new PerformanceCounter("PhysicalDisk", "Disk Read Bytes/sec",  "_Total");
-        using var diskWriteCounter = new PerformanceCounter("PhysicalDisk", "Disk Write Bytes/sec", "_Total");
-
-        // Pick the first active network adapter
-        var netCategory = new PerformanceCounterCategory("Network Interface");
-        var netInstances = netCategory.GetInstanceNames();
-        PerformanceCounter? netSentCounter  = null;
-        PerformanceCounter? netRecvCounter  = null;
-        if (netInstances.Length > 0)
-        {
-            netSentCounter = new PerformanceCounter("Network Interface", "Bytes Sent/sec",     netInstances[0]);
-            netRecvCounter = new PerformanceCounter("Network Interface", "Bytes Received/sec", netInstances[0]);
-        }
-
-        var ramInfo = GC.GetGCMemoryInfo();
-        long totalRam = GetTotalPhysicalMemory();
 
         try
         {
             while (!ct.IsCancellationRequested && _stream is not null)
             {
-                double cpu = cpuCounter.NextValue();
-                long usedRam = totalRam - (long)new PerformanceCounter("Memory", "Available Bytes").NextValue();
-
-                double diskRead  = diskReadCounter.NextValue()  / 1_048_576.0;
-                double diskWrite = diskWriteCounter.NextValue() / 1_048_576.0;
-                double netSent   = (netSentCounter?.NextValue() ?? 0) / 1_048_576.0;
-                double netRecv   = (netRecvCounter?.NextValue() ?? 0) / 1_048_576.0;
-
-                var processes = Process.GetProcesses()
-                    .Select(p =>
-                    {
-                        try { return new ProcessInfoData(p.Id, p.ProcessName, 0, p.WorkingSet64 / 1_048_576); }
-                        catch { return new ProcessInfoData(0, "?", 0, 0); }
-                    })
-                    .Where(p => p.Pid != 0)
-                    .OrderByDescending(p => p.RamMb)
-                    .Take(10)
-                    .ToArray();
-
-                var stats = new SystemStatsMessage(
-                    Math.Round(cpu, 1),
-                    usedRam / 1_048_576,
-                    totalRam / 1_048_576,
-                    Math.Round(diskRead, 2),
-                    Math.Round(diskWrite, 2),
-                    Math.Round(netSent, 2),
-                    Math.Round(netRecv, 2),
-                    processes
-                );
-
+                var stats = sampler.Sample();
                 await MessageFraming.WriteFrameAsync(_stream, MessageType.SystemStats,
                     JsonSerializer.SerializeToUtf8Bytes(stats), ct);
 
@@ -710,11 +702,9 @@ public sealed class HostAgent
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { Console.WriteLine($"[Stats] Error: {ex.Message}"); }
-        finally
+        catch (Exception ex)
         {
-            netSentCounter?.Dispose();
-            netRecvCounter?.Dispose();
+            Console.WriteLine($"[Stats] Error: {ex.Message}");
         }
     }
 

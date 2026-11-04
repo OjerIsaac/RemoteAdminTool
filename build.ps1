@@ -247,6 +247,27 @@ if ($PublishHostDev) {
     Write-Host "Publishing Host EXE for local dev testing (keys preserved)..." -ForegroundColor Yellow
     $dateStr     = (Get-Date).ToString("yyyy-MM-dd")
     $distDevHost = Join-Path $root "dist\$dateStr\host_dev"
+    $binDebug    = Join-Path $root "Host\bin\Debug\net8.0-windows"
+
+    if (-not (Test-Path (Join-Path $distDevHost "host.key"))) {
+        # Search for previous dev keys from any earlier date in dist\*\host_dev\
+        $prevDev = Get-ChildItem (Join-Path $root "dist") -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "host_dev" } |
+            Where-Object { Test-Path (Join-Path $_ "host.key") } |
+            Select-Object -First 1
+
+        if ($prevDev) {
+            New-Item -ItemType Directory -Path $distDevHost -Force | Out-Null
+            Copy-Item (Join-Path $prevDev "host.key") $distDevHost -Force
+            Copy-Item (Join-Path $prevDev "host.token") $distDevHost -Force
+            if (Test-Path (Join-Path $prevDev "license_info.txt")) {
+                Copy-Item (Join-Path $prevDev "license_info.txt") $distDevHost -Force
+            }
+            Write-Host "  Carried forward existing dev keys from: $prevDev" -ForegroundColor Cyan
+        }
+    }
+
     if (-not (Test-Path (Join-Path $distDevHost "host.key"))) {
         Write-Error "host.key not found in $distDevHost - run MakeDevHostKey.ps1 first to generate keys."
     } else {
@@ -255,10 +276,17 @@ if ($PublishHostDev) {
             -o $distDevHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
         if ($LASTEXITCODE -eq 0) {
             # Remove publish artifacts but keep the key files and appsettings
-            Get-ChildItem $distDevHost -Exclude "Host.exe","host.key","host.token","appsettings.json","license_info.txt" | Remove-Item -Force -Recurse
+            Get-ChildItem $distDevHost -Exclude "Host.exe","host.key","host.token","appsettings.json","license_info.txt","logs" | Remove-Item -Force -Recurse
             # Always refresh appsettings.json from source
             $appSettings = Join-Path $root "Host\appsettings.json"
             if (Test-Path $appSettings) { Copy-Item $appSettings (Join-Path $distDevHost "appsettings.json") -Force }
+
+            # Also ensure Host\bin\Debug\net8.0-windows has the keys for F5 / dotnet run testing
+            if (Test-Path $binDebug) {
+                Copy-Item (Join-Path $distDevHost "host.key") $binDebug -Force
+                Copy-Item (Join-Path $distDevHost "host.token") $binDebug -Force
+            }
+
             Write-Host "  Host.exe rebuilt -> $distDevHost\Host.exe" -ForegroundColor Green
             Write-Host "  host.key + host.token preserved in $distDevHost" -ForegroundColor DarkGray
         }

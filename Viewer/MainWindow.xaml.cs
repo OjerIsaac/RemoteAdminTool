@@ -18,7 +18,6 @@ public partial class MainWindow : Window
     private int _remoteWidth;
     private int _remoteHeight;
     private bool _chatVisible;
-    private double _monitorPanelWidth;
 
     // Auto-reconnect
     private string? _savedRelayUrl;
@@ -37,8 +36,8 @@ public partial class MainWindow : Window
     public ObservableCollection<NodeViewModel> Nodes { get; } = new();
     public ObservableCollection<ChatEntry> ChatEntries { get; } = new();
     public ObservableCollection<TenantViewModel> Tenants { get; } = new();
-    public ObservableCollection<ProcessInfoData> ProcessItems { get; } = new();
     public ObservableCollection<RemoteFileEntry> RemoteFiles { get; } = new();
+    private MonitorViewModel _monitorViewModel = new();
 
     public MainWindow()
     {
@@ -46,10 +45,9 @@ public partial class MainWindow : Window
         NodeList.ItemsSource    = Nodes;
         ChatMessages.ItemsSource = ChatEntries;
         TenantList.ItemsSource  = Tenants;
-        ProcessList.ItemsSource = ProcessItems;
         RemoteFileList.ItemsSource = RemoteFiles;
+        MonitorPanel.DataContext = _monitorViewModel;
 
-        MonitorPanel.SizeChanged += (_, e) => _monitorPanelWidth = e.NewSize.Width;
         RelayUrlBox.Text = ViewerConstants.RelayUrl;
     }
 
@@ -94,6 +92,7 @@ public partial class MainWindow : Window
         _client.ShellStarted        += OnShellStarted;
         _client.ShellEnded          += OnShellEnded;
         _client.SystemStatsReceived += OnSystemStatsReceived;
+        _client.SystemInventoryReceived += OnSystemInventoryReceived;
         _client.DeviceInfoReceived  += OnDeviceInfoReceived;
         _client.DirectoryListReceived += OnDirectoryListReceived;
 
@@ -476,8 +475,9 @@ public partial class MainWindow : Window
         ScreenTab.Visibility    = Visibility.Visible;
         ConsoleOutput.Document.Blocks.Clear();
         CodeOutput.Document.Blocks.Clear();
-        ProcessItems.Clear();
         RemoteFiles.Clear();
+        _monitorViewModel = new MonitorViewModel();
+        MonitorPanel.DataContext = _monitorViewModel;
         SilentModeCheckBox.IsChecked = false;
         // Clear connected state on all nodes
         foreach (var n in Nodes) n.IsConnected = false;
@@ -498,10 +498,15 @@ public partial class MainWindow : Window
         SetSessionTab(3);
         _ = _client?.RequestDirectoryAsync(_currentRemotePath);
     }
-    private void TabDeviceBtn_Click(object sender, RoutedEventArgs e)  => SetSessionTab(4);
+    private void TabDeviceBtn_Click(object sender, RoutedEventArgs e)
+    {
+        SetSessionTab(4);
+        _ = _client?.RequestDeviceInfoAsync();
+    }
     private void TabMonitorBtn_Click(object sender, RoutedEventArgs e)
     {
         SetSessionTab(5);
+        _ = _client?.RequestDeviceInfoAsync();
         _ = _client?.SendStatsRequestAsync(true);
     }
 
@@ -852,25 +857,33 @@ public partial class MainWindow : Window
         await _client.SetSilentModeAsync(SilentModeCheckBox.IsChecked == true);
     }
 
-    // ---- Monitor stats ----
+    // ---- Monitor stats & inventory ----
 
     private void OnSystemStatsReceived(object? sender, SystemStatsMessage stats)
     {
         Dispatcher.Invoke(() =>
         {
-            var panelW = _monitorPanelWidth > 0 ? _monitorPanelWidth - 32 : 400;
-            CpuLabel.Text = $"{stats.CpuPercent:F1}%";
-            CpuBar.Width  = panelW * (stats.CpuPercent / 100.0);
-            double ramPct = stats.RamTotalMb > 0 ? (double)stats.RamUsedMb / stats.RamTotalMb : 0;
-            RamLabel.Text = $"{stats.RamUsedMb:N0} / {stats.RamTotalMb:N0} MB";
-            RamBar.Width  = panelW * ramPct;
-            DiskReadLabel.Text  = $"{stats.DiskReadMbps:F2} MB/s";
-            DiskWriteLabel.Text = $"{stats.DiskWriteMbps:F2} MB/s";
-            NetSentLabel.Text   = $"{stats.NetSentMbps:F2} MB/s";
-            NetRecvLabel.Text   = $"{stats.NetRecvMbps:F2} MB/s";
-            ProcessItems.Clear();
-            foreach (var p in stats.TopProcesses) ProcessItems.Add(p);
+            _monitorViewModel.UpdateStats(stats);
         });
+    }
+
+    private void OnSystemInventoryReceived(object? sender, SystemInventoryMessage inv)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _monitorViewModel.UpdateInventory(inv);
+        });
+    }
+
+    private async void EndProcessBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client is null || MonitorProcessList.SelectedItem is not ProcessItem proc) return;
+        var res = MessageBox.Show($"Are you sure you want to terminate process '{proc.Name}' (PID {proc.Pid}) on the remote host?",
+            "Terminate Process", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (res == MessageBoxResult.Yes)
+        {
+            await _client.SendKillProcessAsync(proc.Pid);
+        }
     }
 
     // ---- Cursor hiding on remote screen ----

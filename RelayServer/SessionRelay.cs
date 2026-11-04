@@ -1,93 +1,110 @@
+using System.Net.WebSockets;
 using RemoteAdminTool.Shared;
 
 namespace RemoteAdminTool.RelayServer;
 
 /// <summary>
 /// Bidirectional relay between an admin and a host during an active session.
-/// Forwards FrameData from host → admin, and input messages from admin → host.
+/// Forwards frames between host and admin with thread-safe write locks.
 /// This is a pure pass-through - no processing, just shuttling bytes.
 /// </summary>
 public sealed class SessionRelay
 {
     private readonly ConnectedAdmin _admin;
     private readonly ConnectedHost _host;
-    private CancellationTokenSource? _cts;
+    private readonly SemaphoreSlim _adminWriteLock = new(1, 1);
+    private readonly SemaphoreSlim _hostWriteLock = new(1, 1);
+    private int _stopped;
 
     public SessionRelay(ConnectedAdmin admin, ConnectedHost host)
     {
         _admin = admin;
         _host = host;
-        _cts = new CancellationTokenSource();
     }
 
     /// <summary>
-    /// Reads frames from the host and forwards them to the admin.
-    /// Runs until the session is stopped or either side disconnects.
-    /// This handles: FrameData (screen frames), Heartbeat, Disconnect.
+    /// Forwards a frame received from the host to the admin.
     /// </summary>
-    public async Task RunHostToAdminRelayAsync(CancellationToken externalCt)
+    public async Task ForwardToAdminAsync(MessageType type, byte[] payload, CancellationToken ct)
     {
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(externalCt, _cts?.Token ?? CancellationToken.None);
-        var ct = linked.Token;
+        if (Volatile.Read(ref _stopped) == 1) return;
 
         try
         {
-            while (!ct.IsCancellationRequested)
+            await _adminWriteLock.WaitAsync(ct);
+            try
             {
-                var (type, payload) = await MessageFraming.ReadFrameAsync(_host.Stream, ct);
-
-                switch (type)
+                if (_admin.WebSocket.State == WebSocketState.Open)
                 {
-                    case MessageType.FrameData:
-                        // Forward screen frame to admin
-                        await MessageFraming.WriteFrameAsync(_admin.Stream, MessageType.FrameData, payload, ct);
-                        break;
-
-                    case MessageType.Heartbeat:
-                        _host.LastHeartbeat = DateTime.UtcNow;
-                        break;
-
-                    case MessageType.Disconnect:
-                        Console.WriteLine($"[Relay] Host {_host.MachineName} sent disconnect during session");
-                        return;
-
-                    default:
-                        // Forward any other host messages to admin as-is
-                        await MessageFraming.WriteFrameAsync(_admin.Stream, type, payload, ct);
-                        break;
+                    await MessageFraming.WriteFrameAsync(_admin.Stream, type, payload, ct);
                 }
             }
+            finally
+            {
+                _adminWriteLock.Release();
+            }
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Session was stopped - normal
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Relay] Host→Admin relay error: {ex.Message}");
+            Console.WriteLine($"[Relay] Host->Admin forward error: {ex.Message}");
         }
     }
 
     /// <summary>
-    /// Called by the hub when the admin sends an input message that should
-    /// be forwarded to the host (MouseMove, KeyEvent, etc.).
+    /// Called by the hub when the admin sends an input or command message that should
+    /// be forwarded to the host (MouseMove, KeyEvent, ShellInput, StatsRequest, etc.).
     /// </summary>
     public async Task ForwardToHostAsync(MessageType type, byte[] payload, CancellationToken ct)
     {
+        if (Volatile.Read(ref _stopped) == 1) return;
+
         try
         {
-            await MessageFraming.WriteFrameAsync(_host.Stream, type, payload, ct);
+            await _hostWriteLock.WaitAsync(ct);
+            try
+            {
+                if (_host.WebSocket.State == WebSocketState.Open)
+                {
+                    await MessageFraming.WriteFrameAsync(_host.Stream, type, payload, ct);
+                }
+            }
+            finally
+            {
+                _hostWriteLock.Release();
+            }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Console.WriteLine($"[Relay] Admin→Host forward error: {ex.Message}");
+            Console.WriteLine($"[Relay] Admin->Host forward error: {ex.Message}");
         }
     }
 
     public void Stop()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _cts = null;
+        if (Interlocked.Exchange(ref _stopped, 1) == 1) return;
+
+        _host.ActiveSession = null;
+
+        // Best effort notify host that session ended so it resets state (stops screen capture, stats, shell)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _hostWriteLock.WaitAsync();
+                try
+                {
+                    if (_host.WebSocket.State == WebSocketState.Open)
+                    {
+                        await MessageFraming.WriteFrameAsync(_host.Stream, MessageType.DisconnectFromHost,
+                            Array.Empty<byte>(), CancellationToken.None);
+                    }
+                }
+                finally
+                {
+                    _hostWriteLock.Release();
+                }
+            }
+            catch { /* best effort */ }
+        });
     }
 }

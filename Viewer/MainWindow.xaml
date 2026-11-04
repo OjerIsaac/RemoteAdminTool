@@ -65,6 +65,16 @@
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="Margin" Value="0,2"/>
         </Style>
+
+        <!-- Monitor card style -->
+        <Style x:Key="CardBorder" TargetType="Border">
+            <Setter Property="Background" Value="#181825"/>
+            <Setter Property="BorderBrush" Value="#313244"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="14"/>
+            <Setter Property="Margin" Value="0,0,0,14"/>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -671,73 +681,263 @@
             <!-- TAB: Monitor -->
             <ScrollViewer x:Name="MonitorPanel" Visibility="Collapsed" Margin="0,38,0,0"
                           VerticalScrollBarVisibility="Auto" Background="#11111b">
-                <StackPanel Margin="16,12">
-                    <TextBlock Text="CPU Usage" Foreground="#89b4fa" FontSize="12"
-                               FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <Grid Margin="0,0,0,12">
-                        <Border Background="#1e1e2e" CornerRadius="4" Height="18"/>
-                        <Border x:Name="CpuBar" Background="#89b4fa" CornerRadius="4" Height="18"
-                                HorizontalAlignment="Left" Width="0"/>
-                        <TextBlock x:Name="CpuLabel" Text="0%" Foreground="#cdd6f4" FontSize="11"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Grid>
+                <StackPanel Margin="20,16" MaxWidth="1100" HorizontalAlignment="Stretch">
 
-                    <TextBlock Text="Memory (RAM)" Foreground="#a6e3a1" FontSize="12"
-                               FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <Grid Margin="0,0,0,12">
-                        <Border Background="#1e1e2e" CornerRadius="4" Height="18"/>
-                        <Border x:Name="RamBar" Background="#a6e3a1" CornerRadius="4" Height="18"
-                                HorizontalAlignment="Left" Width="0"/>
-                        <TextBlock x:Name="RamLabel" Text="0 / 0 MB" Foreground="#cdd6f4" FontSize="11"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Grid>
-
-                    <UniformGrid Columns="2" Margin="0,0,0,12">
-                        <StackPanel Margin="0,0,8,0">
-                            <TextBlock Text="Disk Read" Foreground="#f9e2af" FontSize="11"
-                                       FontWeight="SemiBold" Margin="0,0,0,2"/>
-                            <TextBlock x:Name="DiskReadLabel" Text="0 MB/s"
-                                       Foreground="#cdd6f4" FontSize="13" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel>
-                            <TextBlock Text="Disk Write" Foreground="#f9e2af" FontSize="11"
-                                       FontWeight="SemiBold" Margin="0,0,0,2"/>
-                            <TextBlock x:Name="DiskWriteLabel" Text="0 MB/s"
-                                       Foreground="#cdd6f4" FontSize="13" FontWeight="Bold"/>
-                        </StackPanel>
-                    </UniformGrid>
-                    <UniformGrid Columns="2" Margin="0,0,0,16">
-                        <StackPanel Margin="0,0,8,0">
-                            <TextBlock Text="Net Sent" Foreground="#cba6f7" FontSize="11"
-                                       FontWeight="SemiBold" Margin="0,0,0,2"/>
-                            <TextBlock x:Name="NetSentLabel" Text="0 MB/s"
-                                       Foreground="#cdd6f4" FontSize="13" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel>
-                            <TextBlock Text="Net Recv" Foreground="#cba6f7" FontSize="11"
-                                       FontWeight="SemiBold" Margin="0,0,0,2"/>
-                            <TextBlock x:Name="NetRecvLabel" Text="0 MB/s"
-                                       Foreground="#cdd6f4" FontSize="13" FontWeight="Bold"/>
-                        </StackPanel>
-                    </UniformGrid>
-
-                    <TextBlock Text="Top Processes (by RAM)" Foreground="#f38ba8" FontSize="12"
-                               FontWeight="SemiBold" Margin="0,0,0,6"/>
-                    <Border Background="#1e1e2e" CornerRadius="6" Padding="8">
-                        <ItemsControl x:Name="ProcessList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="0,3">
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding RamMb, StringFormat='{}{0} MB'}"
-                                                   Foreground="#6c7086" FontSize="11" FontFamily="Consolas"
-                                                   Width="60" TextAlignment="Right"/>
-                                        <TextBlock Text="{Binding Name}" Foreground="#cdd6f4" FontSize="11"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                    <!-- Header: Machine & System Inventory Summary -->
+                    <Border Style="{StaticResource CardBorder}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="MOTHERBOARD" Foreground="#6c7086" FontSize="10" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Motherboard}" Foreground="#cdd6f4" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding Bios, StringFormat='BIOS: {0}'}" Foreground="#a6adc8" FontSize="11" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="SYSTEM UPTIME" Foreground="#6c7086" FontSize="10" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Uptime}" Foreground="#a6e3a1" FontSize="13" FontWeight="SemiBold" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding BatteryInfo}" Foreground="#f9e2af" FontSize="11" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="DISK &amp; NET THROUGHPUT" Foreground="#6c7086" FontSize="10" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding DiskReadRate, StringFormat='Disk R: {0}'}" Foreground="#89b4fa" FontSize="11" Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding DiskWriteRate, StringFormat='Disk W: {0}'}" Foreground="#89b4fa" FontSize="11"/>
+                                <TextBlock Text="{Binding NetSentRate, StringFormat='Net Up: {0}'}" Foreground="#cba6f7" FontSize="11"/>
+                                <TextBlock Text="{Binding NetRecvRate, StringFormat='Net Down: {0}'}" Foreground="#cba6f7" FontSize="11"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
+
+                    <!-- CPU Section: Total & Per Core -->
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="CPU &amp; PROCESSOR" Foreground="#89b4fa" FontSize="13" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding CpuPercentText}" Foreground="#89b4fa" FontSize="14" FontWeight="Bold" DockPanel.Dock="Right"/>
+                            </DockPanel>
+                            <TextBlock Text="{Binding CpuName}" Foreground="#cdd6f4" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                            <TextBlock Text="{Binding CpuDetails}" Foreground="#6c7086" FontSize="11" Margin="0,0,10,0" TextWrapping="Wrap"/>
+
+                            <!-- Overall CPU Bar -->
+                            <Grid Margin="0,4,0,12">
+                                <ProgressBar Height="14" Minimum="0" Maximum="100" Value="{Binding CpuPercent}"
+                                             Background="#313244" Foreground="#89b4fa" BorderThickness="0"/>
+                            </Grid>
+
+                            <!-- Per Core Multi-Bar Grid -->
+                            <TextBlock Text="Logical Cores Utilization" Foreground="#a6adc8" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <ItemsControl ItemsSource="{Binding Cores}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#1e1e2e" CornerRadius="4" Padding="6,4" Margin="0,0,8,8" Width="120">
+                                            <StackPanel>
+                                                <DockPanel>
+                                                    <TextBlock Text="{Binding CoreLabel}" Foreground="#6c7086" FontSize="10"/>
+                                                    <TextBlock Text="{Binding UsageText}" Foreground="#cdd6f4" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right"/>
+                                                </DockPanel>
+                                                <ProgressBar Height="6" Minimum="0" Maximum="100" Value="{Binding UsagePercent}"
+                                                             Background="#313244" Foreground="#89b4fa" BorderThickness="0" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Memory Section -->
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="SYSTEM MEMORY (RAM)" Foreground="#a6e3a1" FontSize="13" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding RamText}" Foreground="#a6e3a1" FontSize="12" FontWeight="Bold" DockPanel.Dock="Right"/>
+                            </DockPanel>
+                            <ProgressBar Height="14" Minimum="0" Maximum="100" Value="{Binding RamPercent}"
+                                         Background="#313244" Foreground="#a6e3a1" BorderThickness="0" Margin="0,0,0,12"/>
+
+                            <!-- Physical Memory Modules / Sticks -->
+                            <TextBlock Text="Installed Physical Memory Modules (Sticks)" Foreground="#a6adc8" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <ItemsControl ItemsSource="{Binding MemoryModules}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#1e1e2e" CornerRadius="4" Padding="10,6" Margin="0,0,0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="100"/>
+                                                    <ColumnDefinition Width="90"/>
+                                                    <ColumnDefinition Width="140"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="140"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Slot}" Foreground="#cdd6f4" FontSize="11" FontWeight="SemiBold"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Capacity}" Foreground="#a6e3a1" FontSize="11" FontWeight="Bold"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding TypeAndSpeed}" Foreground="#89b4fa" FontSize="11"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding Manufacturer, StringFormat='Mfr: {0}'}" Foreground="#a6adc8" FontSize="11"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding PartNumber, StringFormat='Part: {0}'}" Foreground="#6c7086" FontSize="11" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Storage Section (Volumes & Physical Disks) -->
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel>
+                            <TextBlock Text="STORAGE &amp; DRIVES" Foreground="#f9e2af" FontSize="13" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                            <!-- Logical Volumes -->
+                            <TextBlock Text="Logical Volumes / Partitions" Foreground="#a6adc8" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <ItemsControl ItemsSource="{Binding Volumes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#1e1e2e" CornerRadius="4" Padding="10,8" Margin="0,0,0,6">
+                                            <StackPanel>
+                                                <DockPanel>
+                                                    <TextBlock Text="{Binding DriveLetter}" Foreground="#f9e2af" FontSize="12" FontWeight="Bold" Margin="0,0,10,0"/>
+                                                    <TextBlock Text="{Binding UsageSummary}" Foreground="#cdd6f4" FontSize="11"/>
+                                                    <TextBlock Text="{Binding PercentText}" Foreground="#f9e2af" FontSize="11" FontWeight="Bold" DockPanel.Dock="Right"/>
+                                                </DockPanel>
+                                                <ProgressBar Height="8" Minimum="0" Maximum="100" Value="{Binding UsedPercent}"
+                                                             Background="#313244" Foreground="#f9e2af" BorderThickness="0" Margin="0,6,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Physical Disks -->
+                            <TextBlock Text="Physical Storage Drives" Foreground="#a6adc8" FontSize="11" FontWeight="SemiBold" Margin="0,10,0,6"/>
+                            <ItemsControl ItemsSource="{Binding PhysicalDisks}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#1e1e2e" CornerRadius="4" Padding="10,6" Margin="0,0,0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="100"/>
+                                                    <ColumnDefinition Width="90"/>
+                                                    <ColumnDefinition Width="80"/>
+                                                    <ColumnDefinition Width="130"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Model}" Foreground="#cdd6f4" FontSize="11" FontWeight="SemiBold"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Type}" Foreground="#f9e2af" FontSize="11"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Interface}" Foreground="#6c7086" FontSize="11"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding Size}" Foreground="#a6e3a1" FontSize="11" FontWeight="Bold"/>
+                                                <TextBlock Grid.Column="4" Text="{Binding Serial, StringFormat='S/N: {0}'}" Foreground="#6c7086" FontSize="10" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- GPU & Display Section -->
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel>
+                            <TextBlock Text="GRAPHICS &amp; DISPLAY (GPU)" Foreground="#cba6f7" FontSize="13" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <ItemsControl ItemsSource="{Binding Gpus}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#1e1e2e" CornerRadius="4" Padding="10,6" Margin="0,0,0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="150"/>
+                                                    <ColumnDefinition Width="120"/>
+                                                    <ColumnDefinition Width="160"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" Foreground="#cdd6f4" FontSize="11" FontWeight="SemiBold"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Vram, StringFormat='VRAM: {0}'}" Foreground="#cba6f7" FontSize="11"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Resolution}" Foreground="#89b4fa" FontSize="11"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding DriverVersion, StringFormat='Driver: {0}'}" Foreground="#6c7086" FontSize="10" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Network Adapters Section -->
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel>
+                            <TextBlock Text="NETWORK ADAPTERS &amp; INTERFACES" Foreground="#89dceb" FontSize="13" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <ItemsControl ItemsSource="{Binding NetworkAdapters}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#1e1e2e" CornerRadius="4" Padding="10,8" Margin="0,0,0,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="160"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="140"/>
+                                                    <ColumnDefinition Width="140"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Name}" Foreground="#89dceb" FontSize="11" FontWeight="Bold"/>
+                                                    <TextBlock Text="{Binding Type}" Foreground="#6c7086" FontSize="10"/>
+                                                    <TextBlock Text="{Binding Speed}" Foreground="#a6adc8" FontSize="10"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Margin="8,0">
+                                                    <TextBlock Text="{Binding Description}" Foreground="#cdd6f4" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding IPv4, StringFormat='IPv4: {0}'}" Foreground="#a6e3a1" FontSize="11"/>
+                                                    <TextBlock Text="{Binding Gateways, StringFormat='Gateway: {0}'}" Foreground="#6c7086" FontSize="10"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock Text="{Binding Mac, StringFormat='MAC: {0}'}" Foreground="#a6adc8" FontSize="10" FontFamily="Consolas"/>
+                                                    <TextBlock Text="{Binding Dns, StringFormat='DNS: {0}'}" Foreground="#6c7086" FontSize="10"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="3" HorizontalAlignment="Right">
+                                                    <TextBlock Text="{Binding Dhcp, StringFormat='DHCP: {0}'}" Foreground="#6c7086" FontSize="10"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Active Processes (Task Manager) -->
+                    <Border Style="{StaticResource CardBorder}">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <TextBlock Text="ACTIVE PROCESSES" Foreground="#f38ba8" FontSize="13" FontWeight="Bold"/>
+                                <Button Content="End Process" Click="EndProcessBtn_Click"
+                                        Style="{StaticResource SidebarButton}" Padding="8,2" FontSize="11"
+                                        Background="#f38ba8" Foreground="#1e1e2e" FontWeight="SemiBold"
+                                        DockPanel.Dock="Right"/>
+                            </DockPanel>
+
+                            <ListView x:Name="MonitorProcessList"
+                                      ItemsSource="{Binding Processes}"
+                                      Background="#1e1e2e" BorderThickness="0"
+                                      Foreground="#cdd6f4" FontSize="11"
+                                      MaxHeight="260"
+                                      SelectionMode="Single">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="PID" Width="70" DisplayMemberBinding="{Binding Pid}"/>
+                                        <GridViewColumn Header="Process Name" Width="240" DisplayMemberBinding="{Binding Name}"/>
+                                        <GridViewColumn Header="CPU %" Width="90" DisplayMemberBinding="{Binding CpuPercent, StringFormat='{}{0:F1}%'}"/>
+                                        <GridViewColumn Header="Memory (RAM)" Width="120" DisplayMemberBinding="{Binding RamMb, StringFormat='{}{0} MB'}"/>
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </DockPanel>
+                    </Border>
+
                 </StackPanel>
             </ScrollViewer>
 

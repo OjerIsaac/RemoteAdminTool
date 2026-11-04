@@ -137,3 +137,5 @@ dist/
 ## TLS dev certs
 dev-cert.pfx
 *.pfx
+
+AGENTS.md
