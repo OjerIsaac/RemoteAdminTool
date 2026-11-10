@@ -80,12 +80,13 @@ public sealed class ConnectionHub
         var register = JsonSerializer.Deserialize<HostRegisterMessage>(payload);
 
         // 1. Validate license key -> tenant
+        // Note: Hosts of suspended tenants are still allowed to connect so the Super Admin retains
+        // full visibility and control over all deployed hosts even when a sub-admin is suspended.
         var tenant = await _tenantStore.GetByLicenseKeyAsync(register.LicenseKey);
-        if (tenant is null || !tenant.IsActive)
+        if (tenant is null)
         {
             rateLimiter.RecordFailure(ip);
-            var reject = new HostRegisterAckMessage(false,
-                tenant is null ? "Unknown license key" : "Tenant is suspended");
+            var reject = new HostRegisterAckMessage(false, "Unknown license key");
             await MessageFraming.WriteFrameAsync(stream, MessageType.HostRegisterAck,
                 JsonSerializer.SerializeToUtf8Bytes(reject), ct);
             await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Auth failed", ct);
@@ -361,7 +362,8 @@ public sealed class ConnectionHub
                 case MessageType.SuspendTenant when admin.IsSuperAdmin:
                     var suspend = JsonSerializer.Deserialize<SuspendTenantMessage>(payload);
                     await _tenantStore.SetActiveAsync(suspend.TenantId, false);
-                    Console.WriteLine($"[Hub] Tenant suspended: {suspend.TenantId}");
+                    await DisconnectTenantAdminAsync(suspend.TenantId, ct);
+                    Console.WriteLine($"[Hub] Tenant suspended and kicked: {suspend.TenantId}");
                     break;
 
                 case MessageType.ResumeTenant when admin.IsSuperAdmin:
@@ -383,8 +385,45 @@ public sealed class ConnectionHub
     // SESSIONS
     // -------------------------------------------------------------------------
 
+    private async Task DisconnectTenantAdminAsync(string tenantId, CancellationToken ct)
+    {
+        if (_activeSessions.TryRemove(tenantId, out var activeSession))
+        {
+            activeSession.Stop();
+        }
+
+        if (_admins.TryRemove(tenantId, out var tenantAdmin))
+        {
+            try
+            {
+                if (tenantAdmin.WebSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                {
+                    await tenantAdmin.WebSocket.CloseAsync(
+                        WebSocketCloseStatus.PolicyViolation,
+                        "Tenant is suspended",
+                        ct);
+                }
+            }
+            catch
+            {
+                // Best effort socket close
+            }
+        }
+    }
+
     private async Task StartSessionAsync(ConnectedAdmin admin, string machineId, CancellationToken ct)
     {
+        if (!admin.IsSuperAdmin)
+        {
+            var allTenants = await _tenantStore.GetAllAsync();
+            var tenant = allTenants.FirstOrDefault(t => t.TenantId == admin.TenantId);
+            if (tenant is null || !tenant.IsActive)
+            {
+                await DisconnectTenantAdminAsync(admin.TenantId, ct);
+                return;
+            }
+        }
+
         // Determine which tenant's host pool to look in
         ConcurrentDictionary<string, ConnectedHost>? hosts = null;
 
@@ -449,6 +488,14 @@ public sealed class ConnectionHub
         }
         else
         {
+            var allTenants = await _tenantStore.GetAllAsync();
+            var tenant = allTenants.FirstOrDefault(t => t.TenantId == admin.TenantId);
+            if (tenant is null || !tenant.IsActive)
+            {
+                await DisconnectTenantAdminAsync(admin.TenantId, ct);
+                return;
+            }
+
             hosts = _tenantHosts.TryGetValue(admin.TenantId, out var pool)
                 ? pool.Values.Select(h => ToHostInfo(h)).ToArray()
                 : Array.Empty<HostInfoMessage>();

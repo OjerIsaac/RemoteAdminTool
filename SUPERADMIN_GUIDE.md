@@ -291,8 +291,8 @@ If you need to rebuild a Host EXE or share the Admin Token again:
 
 ## Part 6: Suspending / Resuming a Sub-Admin
 
-- **Suspend** - blocks their Host machines from connecting (e.g. non-payment)
-- **Resume** - re-activates them
+- **Suspend** - immediately kicks the Sub-Admin out of their open `Viewer.exe` (and terminates any active session they are running), blocks them from logging back into `Viewer.exe` (`Rejected: Tenant is suspended`), **while keeping all of their deployed Host machines online and controllable by YOU (the Super Admin)**
+- **Resume** - re-activates their `Viewer.exe` login immediately
 
 1. Tenants tab → find the sub-admin
 2. Click **Suspend** or **Resume**

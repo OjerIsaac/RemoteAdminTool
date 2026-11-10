@@ -100,6 +100,12 @@ public partial class MainWindow : Window
 
             if (!accepted)
             {
+                _autoReconnecting = false;
+                LoginForm.Visibility   = Visibility.Visible;
+                LoggedInBar.Visibility = Visibility.Collapsed;
+                Nodes.Clear();
+                Tenants.Clear();
+                TabTenantsButton.Visibility = Visibility.Collapsed;
                 StatusText.Text = $"Rejected: {reason}";
                 SetStatusColor("#f38ba8");
                 await _client.DisposeAsync();
@@ -162,7 +168,7 @@ public partial class MainWindow : Window
                     {
                         StatusText.Text = $"Reconnecting... ({attempts})";
                         await ConnectInternalAsync(_savedRelayUrl!, _savedAdminToken!, _savedLicenseKey ?? "");
-                        if (_client is not null) return; // success
+                        if (_client is not null || !_autoReconnecting) return; // success or explicitly rejected (e.g. suspended)
                     }
                     catch { }
                     await Task.Delay(5000);
