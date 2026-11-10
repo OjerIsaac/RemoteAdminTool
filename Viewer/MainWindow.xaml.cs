@@ -325,9 +325,11 @@ public partial class MainWindow : Window
             ConnectingOverlay.Visibility      = Visibility.Collapsed;
             SessionToolbar.Visibility         = Visibility.Visible;
             NoSessionPlaceholder.Visibility   = Visibility.Collapsed;
-            RemoteScreenImage.Focus();
-            SetSessionTab(0);
+            // [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
+            // RemoteScreenImage.Focus();
+            // SetSessionTab(0);
             _currentRemotePath = "\\";
+            TabConsoleBtn_Click(this, new RoutedEventArgs());
             // Mark the active node as connected
             foreach (var n in Nodes) n.IsConnected = (n.MachineId == msg.MachineId);
         });
@@ -335,6 +337,7 @@ public partial class MainWindow : Window
 
     private void OnFrameReceived(object? sender, byte[] jpegBytes)
     {
+        /* [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
         Dispatcher.Invoke(() =>
         {
             using var ms = new MemoryStream(jpegBytes);
@@ -351,6 +354,7 @@ public partial class MainWindow : Window
                 _remoteHeight = bitmap.PixelHeight;
             }
         });
+        */
     }
 
     // ---- Logout ----
@@ -373,6 +377,7 @@ public partial class MainWindow : Window
 
     private void OnMonitorListReceived(object? sender, MonitorInfoData[] monitors)
     {
+        /* [COMMENTED OUT FOR NOW - Monitor selector for Screen Tab]
         Dispatcher.Invoke(() =>
         {
             MonitorSelector.Items.Clear();
@@ -383,13 +388,16 @@ public partial class MainWindow : Window
             }
             if (MonitorSelector.Items.Count > 0) { MonitorSelector.SelectedIndex = 0; MonitorSelector.Visibility = Visibility.Visible; }
         });
+        */
     }
 
+    /* [COMMENTED OUT FOR NOW - Monitor selector for Screen Tab]
     private async void MonitorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_client is null || MonitorSelector.SelectedItem is not MonitorComboItem item) return;
         await _client.SelectMonitorAsync(item.Index);
     }
+    */
 
     // ---- Node list ----
 
@@ -421,23 +429,25 @@ public partial class MainWindow : Window
         _remoteWidth = 0;
         _remoteHeight = 0;
         SessionHostName.Text = "";
-        RemoteScreenImage.Source = null;
-        CursorDot.Visibility = Visibility.Collapsed;
+        // [COMMENTED OUT FOR NOW - Screen Tab hidden]
+        // RemoteScreenImage.Source = null;
+        // CursorDot.Visibility = Visibility.Collapsed;
 
         ConnectingOverlay.Visibility    = Visibility.Collapsed;
         SessionToolbar.Visibility       = Visibility.Collapsed;
         NoSessionPlaceholder.Visibility = Visibility.Visible;
 
-        MonitorSelector.Visibility = Visibility.Collapsed;
-        MonitorSelector.Items.Clear();
+        // MonitorSelector.Visibility = Visibility.Collapsed;
+        // MonitorSelector.Items.Clear();
 
-        ScreenTab.Visibility    = Visibility.Collapsed;
+        // ScreenTab.Visibility    = Visibility.Collapsed;
         ConsolePanel.Visibility = Visibility.Collapsed;
         FilesPanel.Visibility   = Visibility.Collapsed;
         DevicePanel.Visibility  = Visibility.Collapsed;
         MonitorPanel.Visibility = Visibility.Collapsed;
 
         ConsoleOutput.Document.Blocks.Clear();
+        ConsoleInput?.Clear();
         AdminBadge.Visibility = Visibility.Collapsed;
         ElevateHostBtn.Visibility = Visibility.Collapsed;
         RemoteFiles.Clear();
@@ -461,8 +471,8 @@ public partial class MainWindow : Window
         MonitorPanel.DataContext = _monitorViewModel;
         SilentModeCheckBox.IsChecked = false;
 
-        // Reset tab highlights to Screen as default
-        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
+        // Reset tab highlights to Terminal as default (TabScreenBtn commented out)
+        var buttons = new[] { /* TabScreenBtn, */ TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
         for (int i = 0; i < buttons.Length; i++)
         {
             buttons[i].Background = i == 0 ? ColorBrush("#89b4fa") : ColorBrush("Transparent");
@@ -477,12 +487,17 @@ public partial class MainWindow : Window
 
     // ---- Session tab switching ----
 
-    private void TabScreenBtn_Click(object sender, RoutedEventArgs e)  => SetSessionTab(0);
+    // [COMMENTED OUT FOR NOW - Screen Tab hidden]
+    // private void TabScreenBtn_Click(object sender, RoutedEventArgs e)  => SetSessionTab(0);
     private void TabConsoleBtn_Click(object sender, RoutedEventArgs e)
     {
         SetSessionTab(1);
-        if (_client is not null && new TextRange(ConsoleOutput.Document.ContentStart, ConsoleOutput.Document.ContentEnd).Text.Length < 5)
-            _ = _client.SendShellInputAsync("echo Shell ready");
+        if (_client is not null && ConsoleOutput.Document.Blocks.Count == 0)
+        {
+            var shellType = ShellTypeCombo.SelectedIndex == 1 ? "cmd" : "powershell";
+            _ = _client.SendShellInputAsync($"##SHELL_TYPE:{shellType}");
+        }
+        FocusConsoleInput();
     }
     private void TabFilesBtn_Click(object sender, RoutedEventArgs e)
     {
@@ -503,7 +518,8 @@ public partial class MainWindow : Window
 
     private void SetSessionTab(int tab)
     {
-        ScreenTab.Visibility    = tab == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // [COMMENTED OUT FOR NOW - Screen Tab hidden]
+        // ScreenTab.Visibility    = tab == 0 ? Visibility.Visible : Visibility.Collapsed;
         ConsolePanel.Visibility = tab == 1 ? Visibility.Visible : Visibility.Collapsed;
         FilesPanel.Visibility   = tab == 2 ? Visibility.Visible : Visibility.Collapsed;
         DevicePanel.Visibility  = tab == 3 ? Visibility.Visible : Visibility.Collapsed;
@@ -512,24 +528,69 @@ public partial class MainWindow : Window
         // Stop stats when leaving monitor tab
         if (tab != 4) _ = _client?.SendStatsRequestAsync(false);
 
-        // Update tab button highlight
-        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
+        // Update tab button highlight (tabs 1..4 map to buttons 0..3 while TabScreenBtn is commented out)
+        var buttons = new[] { /* TabScreenBtn, */ TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
         for (int i = 0; i < buttons.Length; i++)
         {
-            bool active = i == tab;
+            bool active = (i + 1) == tab;
             buttons[i].Background  = active ? ColorBrush("#89b4fa") : ColorBrush("Transparent");
             buttons[i].Foreground  = active ? ColorBrush("#1e1e2e") : ColorBrush("#cdd6f4");
             buttons[i].FontWeight  = active ? FontWeights.SemiBold : FontWeights.Normal;
         }
+
+        if (tab == 1)
+        {
+            if (ConsolePromptLabel is not null && ShellTypeCombo is not null)
+                ConsolePromptLabel.Text = ShellTypeCombo.SelectedIndex == 1 ? "CMD> " : "PS> ";
+            FocusConsoleInput();
+        }
     }
 
-    // ---- Terminal (RichTextBox) ----
+    // ---- Terminal (Direct-Typing Interactive Console) ----
+
+    private void FocusConsoleInput()
+    {
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+        {
+            if (ConsoleInput is null) return;
+            ConsoleInput.Focus();
+            Keyboard.Focus(ConsoleInput);
+            ConsoleInput.CaretIndex = ConsoleInput.Text.Length;
+            TerminalScroller?.ScrollToBottom();
+        });
+    }
+
+    private void TerminalSurface_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (ConsoleOutput.Selection.IsEmpty)
+            FocusConsoleInput();
+    }
+
+    private void ConsoleOutput_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+        {
+            if (ConsoleOutput.Selection.IsEmpty)
+                FocusConsoleInput();
+        });
+    }
+
+    private void ConsoleOutput_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+            (e.Key == Key.C || e.Key == Key.A))
+        {
+            return;
+        }
+
+        FocusConsoleInput();
+    }
 
     private void OnShellStarted(object? sender, EventArgs e)
-        => Dispatcher.Invoke(() => AppendTerminalText("[Shell ready]\n", isError: false));
+        => Dispatcher.Invoke(() => FocusConsoleInput());
 
     private void OnShellEnded(object? sender, EventArgs e)
-        => Dispatcher.Invoke(() => AppendTerminalText("\n[Shell ended]\n", isError: true));
+        => Dispatcher.Invoke(() => AppendTerminalText("[Shell ended]", isError: true));
 
     private void OnShellOutputReceived(object? sender, ShellOutputMessage msg)
         => Dispatcher.Invoke(() =>
@@ -551,7 +612,7 @@ public partial class MainWindow : Window
                 ElevateHostBtn.Visibility = Visibility.Visible;
             }
 
-            AppendTerminalText(msg.Text + "\n", msg.IsError);
+            AppendTerminalText(msg.Text, msg.IsError);
         });
 
     private async void ElevateHostBtn_Click(object sender, RoutedEventArgs e)
@@ -562,15 +623,18 @@ public partial class MainWindow : Window
             "Elevate Host to Administrator", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (res == MessageBoxResult.Yes)
         {
-            AppendTerminalText("[Requesting remote host elevation to Administrator...]\n", isError: false);
+            AppendTerminalText("[Requesting remote host elevation to Administrator...]", isError: false, customColor: "#f9e2af");
             await _client.ElevateHostAsync();
         }
+        FocusConsoleInput();
     }
 
-    private void AppendTerminalText(string text, bool isError)
+    private void AppendTerminalText(string text, bool isError, string? customColor = null)
     {
-        AppendRichText(ConsoleOutput, text, isError ? "#f38ba8" : "#cdd6f4");
-        ConsoleOutput.ScrollToEnd();
+        var clean = text.TrimEnd('\r', '\n');
+        var color = customColor ?? (isError ? "#f38ba8" : "#cdd6f4");
+        AppendRichText(ConsoleOutput, clean, color);
+        TerminalScroller?.ScrollToBottom();
     }
 
     private static void AppendRichText(RichTextBox rtb, string text, string colorHex)
@@ -585,13 +649,17 @@ public partial class MainWindow : Window
         rtb.Document.Blocks.Add(para);
     }
 
-    private async void ConsoleRunBtn_Click(object sender, RoutedEventArgs e) => await SendConsoleCommandAsync();
-
-    private async void ConsoleInput_KeyDown(object sender, KeyEventArgs e)
+    private async void ConsoleInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
             await SendConsoleCommandAsync();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            ConsoleInput.Clear();
+            _historyIndex = -1;
             e.Handled = true;
         }
         else if (e.Key == Key.Up)
@@ -623,29 +691,51 @@ public partial class MainWindow : Window
 
     private async Task SendConsoleCommandAsync()
     {
-        if (_client is null || string.IsNullOrWhiteSpace(ConsoleInput.Text)) return;
-        var cmd = ConsoleInput.Text.Trim();
+        if (_client is null) return;
+        var raw = ConsoleInput.Text;
         ConsoleInput.Clear();
         _historyIndex = -1;
-        _consoleHistory.Add(cmd);
 
         var isCmd = ShellTypeCombo.SelectedIndex == 1;
         var prompt = isCmd ? "CMD> " : "PS> ";
-        AppendTerminalText($"{prompt}{cmd}\n", isError: false);
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            AppendTerminalText(prompt, isError: false, customColor: "#a6e3a1");
+            return;
+        }
+
+        var cmd = raw.Trim();
+        _consoleHistory.Add(cmd);
+
+        if (cmd.Equals("cls", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("clear", StringComparison.OrdinalIgnoreCase))
+        {
+            ConsoleOutput.Document.Blocks.Clear();
+            FocusConsoleInput();
+            return;
+        }
+
+        AppendTerminalText($"{prompt}{cmd}", isError: false, customColor: "#a6e3a1");
         await _client.SendShellInputAsync(cmd);
     }
 
     private void ConsoleClearBtn_Click(object sender, RoutedEventArgs e)
-        => ConsoleOutput.Document.Blocks.Clear();
+    {
+        ConsoleOutput.Document.Blocks.Clear();
+        FocusConsoleInput();
+    }
 
     private async void ShellTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // Tell host to restart with the new shell type
+        var isCmd = ShellTypeCombo?.SelectedIndex == 1;
+        if (ConsolePromptLabel is not null)
+            ConsolePromptLabel.Text = isCmd ? "CMD> " : "PS> ";
+
         if (_client is null) return;
-        var shellType = ShellTypeCombo.SelectedIndex == 1 ? "cmd" : "powershell";
-        // We signal shell type change by sending a special restart command
-        // The host will pick up the new shell on next startup
+        var shellType = isCmd ? "cmd" : "powershell";
         await _client.SendShellInputAsync($"##SHELL_TYPE:{shellType}");
+        FocusConsoleInput();
     }
 
     // ---- File Manager ----
@@ -883,8 +973,8 @@ public partial class MainWindow : Window
         }
     }
 
-    // ---- Cursor hiding on remote screen ----
-
+    // ---- Cursor hiding & Input forwarding on remote screen (COMMENTED OUT FOR NOW) ----
+    /*
     private void RemoteScreenImage_MouseEnter(object sender, MouseEventArgs e)
     {
         RemoteScreenImage.Cursor = Cursors.None;
@@ -896,8 +986,6 @@ public partial class MainWindow : Window
         RemoteScreenImage.Cursor = Cursors.Arrow;
         CursorDot.Visibility = Visibility.Collapsed;
     }
-
-    // ---- Input forwarding ----
 
     private (int X, int Y) ToRemoteCoords(MouseEventArgs e)
     {
@@ -954,6 +1042,7 @@ public partial class MainWindow : Window
         if (_client is null || _activeSessionMachineId is null) return;
         await _client.SendKeyAsync(KeyInterop.VirtualKeyFromKey(e.Key), KeyAction.Up);
     }
+    */
 
     protected override async void OnClosed(EventArgs e)
     {

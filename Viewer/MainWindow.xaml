@@ -368,13 +368,16 @@
 
                     <!-- Session tab buttons -->
                     <StackPanel Orientation="Horizontal" Margin="16,0,0,0">
+                        <!-- [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
                         <Button x:Name="TabScreenBtn" Content="Screen"
                                 Click="TabScreenBtn_Click"
                                 Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"
                                 Background="#89b4fa" Foreground="#1e1e2e" FontWeight="SemiBold"/>
+                        -->
                         <Button x:Name="TabConsoleBtn" Content="Terminal"
                                 Click="TabConsoleBtn_Click"
-                                Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"/>
+                                Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"
+                                Background="#89b4fa" Foreground="#1e1e2e" FontWeight="SemiBold"/>
                         <Button x:Name="TabFilesBtn" Content="Files"
                                 Click="TabFilesBtn_Click"
                                 Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"/>
@@ -386,11 +389,12 @@
                                 Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"/>
                     </StackPanel>
 
-                    <!-- Monitor selector -->
+                    <!-- [COMMENTED OUT FOR NOW - Monitor selector for Screen Tab]
                     <ComboBox x:Name="MonitorSelector" Style="{StaticResource DarkComboBox}"
                               Width="150" Margin="8,0"
                               SelectionChanged="MonitorSelector_SelectionChanged"
                               Visibility="Collapsed"/>
+                    -->
 
                     <!-- Right toolbar -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -434,7 +438,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- TAB: Screen -->
+            <!-- [COMMENTED OUT FOR NOW - TAB: Screen]
             <Grid x:Name="ScreenTab" Margin="0,38,0,0">
                 <Image x:Name="RemoteScreenImage"
                        Stretch="Uniform"
@@ -447,13 +451,14 @@
                        Focusable="True"
                        KeyDown="RemoteScreenImage_KeyDown"
                        KeyUp="RemoteScreenImage_KeyUp"/>
-                <!-- Crosshair dot overlay - shown when cursor is hidden -->
+                [Crosshair dot overlay - shown when cursor is hidden]
                 <Canvas x:Name="CursorOverlay" IsHitTestVisible="False">
                     <Ellipse x:Name="CursorDot" Width="10" Height="10"
                              Fill="#89b4fa" Opacity="0.85"
                              Visibility="Collapsed"/>
                 </Canvas>
             </Grid>
+            -->
 
             <!-- TAB: Terminal (improved - RichTextBox + history + Admin Mode) -->
             <DockPanel x:Name="ConsolePanel" Visibility="Collapsed" Margin="0,38,0,0"
@@ -489,46 +494,52 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Input row pinned to bottom -->
-                <Border DockPanel.Dock="Bottom" Background="#1e1e2e" Padding="8,6"
-                        BorderBrush="#313244" BorderThickness="0,1,0,0">
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="Run" Width="60"
-                                Click="ConsoleRunBtn_Click"
-                                Background="#89b4fa" Foreground="#1e1e2e" FontWeight="SemiBold"
-                                FontFamily="Consolas" FontSize="12" Margin="8,0,0,0"
-                                BorderThickness="0" Padding="0"/>
-                        <TextBlock DockPanel.Dock="Left" Text="PS>" Foreground="#a6e3a1"
-                                   FontFamily="Consolas" FontSize="13"
-                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBox x:Name="ConsoleInput"
-                                 Background="#313244" Foreground="#cdd6f4"
-                                 FontFamily="Consolas" FontSize="13"
-                                 BorderBrush="#45475a" BorderThickness="1"
-                                 Padding="8,4" CaretBrush="#cdd6f4"
-                                 KeyDown="ConsoleInput_KeyDown"
-                                 ToolTip="Type a command and press Enter or Run. Up/Down arrows cycle history."/>
-                    </DockPanel>
-                </Border>
+                <!-- Unified interactive console canvas (type directly inline at prompt) -->
+                <ScrollViewer x:Name="TerminalScroller"
+                              Background="#11111b"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto"
+                              Cursor="IBeam"
+                              MouseLeftButtonUp="TerminalSurface_MouseLeftButtonUp">
+                    <StackPanel Margin="12,10">
+                        <RichTextBox x:Name="ConsoleOutput"
+                                     IsReadOnly="True"
+                                     IsReadOnlyCaretVisible="False"
+                                     FontFamily="Consolas" FontSize="13"
+                                     Background="Transparent" Foreground="#cdd6f4"
+                                     BorderThickness="0" Padding="0"
+                                     VerticalScrollBarVisibility="Disabled"
+                                     HorizontalScrollBarVisibility="Disabled"
+                                     IsDocumentEnabled="True"
+                                     PreviewMouseLeftButtonUp="ConsoleOutput_PreviewMouseLeftButtonUp"
+                                     PreviewKeyDown="ConsoleOutput_PreviewKeyDown">
+                            <FlowDocument PageWidth="2500" PagePadding="0">
+                                <FlowDocument.Resources>
+                                    <Style TargetType="{x:Type Paragraph}">
+                                        <Setter Property="Margin" Value="0"/>
+                                        <Setter Property="LineHeight" Value="1"/>
+                                    </Style>
+                                </FlowDocument.Resources>
+                            </FlowDocument>
+                        </RichTextBox>
 
-                <!-- RichTextBox output area -->
-                <RichTextBox x:Name="ConsoleOutput"
-                             IsReadOnly="True"
-                             FontFamily="Consolas" FontSize="13"
-                             Background="#11111b" Foreground="#cdd6f4"
-                             BorderThickness="0" Padding="12,10"
-                             VerticalScrollBarVisibility="Auto"
-                             HorizontalScrollBarVisibility="Auto"
-                             IsDocumentEnabled="True">
-                    <FlowDocument PageWidth="2500">
-                        <FlowDocument.Resources>
-                            <Style TargetType="{x:Type Paragraph}">
-                                <Setter Property="Margin" Value="0"/>
-                                <Setter Property="LineHeight" Value="1"/>
-                            </Style>
-                        </FlowDocument.Resources>
-                    </FlowDocument>
-                </RichTextBox>
+                        <!-- Active inline command prompt -->
+                        <DockPanel Margin="0,2,0,4" LastChildFill="True">
+                            <TextBlock x:Name="ConsolePromptLabel" DockPanel.Dock="Left"
+                                       Text="PS> " Foreground="#a6e3a1"
+                                       FontFamily="Consolas" FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                            <TextBox x:Name="ConsoleInput"
+                                     Background="Transparent" Foreground="#cdd6f4"
+                                     CaretBrush="#a6e3a1"
+                                     FontFamily="Consolas" FontSize="13"
+                                     BorderThickness="0" Padding="0"
+                                     VerticalAlignment="Center"
+                                     AcceptsReturn="False"
+                                     PreviewKeyDown="ConsoleInput_PreviewKeyDown"/>
+                        </DockPanel>
+                    </StackPanel>
+                </ScrollViewer>
             </DockPanel>
 
             <!-- TAB: File Explorer -->

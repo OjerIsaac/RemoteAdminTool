@@ -382,18 +382,23 @@ public sealed class HostAgent
 
     private async Task FrameSendLoopAsync(CancellationToken ct)
     {
+        /* [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
         const int targetFps = 15;
         var frameInterval = TimeSpan.FromMilliseconds(1000.0 / targetFps);
+        */
         var heartbeatInterval = TimeSpan.FromSeconds(5);
         var lastHeartbeat = DateTime.UtcNow;
 
+        /* [COMMENTED OUT FOR NOW - Adaptive JPEG screen capture]
         // Adaptive quality: start at 60, reduce if frames take too long to send
         long jpegQuality = 60;
         const long minQuality = 20;
         const long maxQuality = 80;
+        */
 
         while (!ct.IsCancellationRequested && _stream is not null)
         {
+            /* [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
             var sendStart = DateTime.UtcNow;
 
             var frameBytes = _capture.CaptureFrameAsJpeg(quality: jpegQuality);
@@ -416,8 +421,9 @@ public sealed class HostAgent
             {
                 jpegQuality = Math.Min(maxQuality, jpegQuality + 2);
             }
+            */
 
-            // Send heartbeat every 5 seconds alongside frames
+            // Send heartbeat every 5 seconds
             if (DateTime.UtcNow - lastHeartbeat > heartbeatInterval)
             {
                 await MessageFraming.WriteFrameAsync(_stream, MessageType.Heartbeat,
@@ -425,7 +431,7 @@ public sealed class HostAgent
                 lastHeartbeat = DateTime.UtcNow;
             }
 
-            await Task.Delay(frameInterval, ct);
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
         }
     }
 
@@ -580,6 +586,14 @@ public sealed class HostAgent
             {
                 await SendShellOutputAsync($"[Elevation Error] Could not elevate host: {ex.Message}\n", isError: true, ct);
             }
+            return;
+        }
+
+        // Special signal: Viewer initializes shell on tab open
+        if (input == "##INIT_SHELL")
+        {
+            if (_shellProcess is null || _shellProcess.HasExited)
+                await StartShellAsync(ct);
             return;
         }
 
