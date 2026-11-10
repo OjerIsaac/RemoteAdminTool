@@ -85,6 +85,9 @@ try
             return;
         }
 
+        // ---- Register in HKCU Run so Host auto-starts and reconnects when PC reboots ----
+        EnsureStartupRegistration();
+
         // ---- Auto-update check ----
         var updated = await AutoUpdater.CheckAndUpdateAsync(HostConstants.RelayHttpUrl, HostConstants.AppVersion, authToken);
         if (updated)
@@ -130,4 +133,29 @@ catch (Exception ex)
 finally
 {
     await Log.CloseAndFlushAsync();
+}
+
+static void EnsureStartupRegistration()
+{
+    try
+    {
+        var exePath = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exePath)) return;
+
+        using var runKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+            @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
+        if (runKey is null) return;
+
+        var quotedPath = $"\"{exePath}\"";
+        var existing = runKey.GetValue("RemoteAdminHost") as string;
+        if (!string.Equals(existing, quotedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            runKey.SetValue("RemoteAdminHost", quotedPath, Microsoft.Win32.RegistryValueKind.String);
+            Log.Information("Registered Host for auto-start on boot: {Path}", quotedPath);
+        }
+    }
+    catch (Exception ex)
+    {
+        Log.Warning("Could not register auto-start in HKCU Run: {Message}", ex.Message);
+    }
 }
