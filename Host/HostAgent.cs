@@ -30,6 +30,8 @@ public sealed class HostAgent
     private readonly InputInjector _input = new();
 
     private bool _silentMode; // runtime toggle - only effective when _allowRemoteSilentMode is true
+    private volatile bool _inActiveSession;
+    private DateTime _lastUpdateCheckUtc = DateTime.UtcNow;
     private ClientWebSocket? _ws;
     private WebSocketStreamAdapter? _stream;
 
@@ -66,6 +68,8 @@ public sealed class HostAgent
     /// </summary>
     public async Task RunAsync(CancellationToken ct = default)
     {
+        _ = RunPeriodicUpdateCheckAsync(ct);
+
         while (!ct.IsCancellationRequested)
         {
             try
@@ -93,8 +97,49 @@ public sealed class HostAgent
         }
     }
 
+    private async Task RunPeriodicUpdateCheckAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                if (!_inActiveSession)
+                {
+                    await CheckAndExitIfUpdatedAsync();
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task CheckAndExitIfUpdatedAsync()
+    {
+        _lastUpdateCheckUtc = DateTime.UtcNow;
+        var updated = await AutoUpdater.CheckAndUpdateAsync(
+            HostConstants.RelayHttpUrl,
+            HostConstants.AppVersion,
+            _authToken);
+
+        if (updated)
+        {
+            Serilog.Log.Information("[HostAgent] Auto-update staged - exiting to relaunch new Host.exe.");
+            await Serilog.Log.CloseAndFlushAsync();
+            Environment.Exit(0);
+        }
+    }
+
     private async Task ConnectAndRunAsync(CancellationToken ct)
     {
+        // When reconnecting (e.g., right after Render redeploys with a new HOST_VERSION),
+        // check for updates immediately if at least 30 seconds have elapsed since the last check.
+        if (!_inActiveSession && (DateTime.UtcNow - _lastUpdateCheckUtc) > TimeSpan.FromSeconds(30))
+        {
+            await CheckAndExitIfUpdatedAsync();
+        }
+
         _ws = new ClientWebSocket();
         await _ws.ConnectAsync(new Uri(_relayUrl), ct);
         _stream = new WebSocketStreamAdapter(_ws);
@@ -111,7 +156,7 @@ public sealed class HostAgent
             _machineId,
             _machineName,
             osVersion,
-            "1.0.0",
+            HostConstants.AppVersion,
             _authToken,
             _licenseKey
         );
@@ -161,9 +206,17 @@ public sealed class HostAgent
                         break;
                     }
                     Console.WriteLine("[HostAgent] Session started - admin connected");
+                    _inActiveSession = true;
                     SessionStateChanged?.Invoke(this, true);
-                    await RunSessionAsync(ct);
-                    SessionStateChanged?.Invoke(this, false);
+                    try
+                    {
+                        await RunSessionAsync(ct);
+                    }
+                    finally
+                    {
+                        _inActiveSession = false;
+                        SessionStateChanged?.Invoke(this, false);
+                    }
                     Console.WriteLine("[HostAgent] Session ended - back to idle");
                     break;
 

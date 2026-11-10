@@ -70,12 +70,12 @@ Click the red **Logout** button in the top-left bar at any time to disconnect cl
 
 | Tab | What it shows |
 |-----|---------------|
-| **Screen** | Live remote desktop - full mouse and keyboard control. Your cursor is hidden; a blue dot tracks your position. |
-| **Terminal** | Interactive PowerShell or CMD terminal. Up/Down arrows cycle command history. Use the shell dropdown to switch between PowerShell and CMD. |
-| **Code** | Multi-line script editor. Write PowerShell or Batch code and click Run - output appears in the pane below. |
-| **Files** | File manager for the remote machine. Browse folders, upload files from your PC to the host, download files from the host to your PC, and delete remote files. |
+| **Terminal** | Direct-typing interactive **PowerShell** or **CMD** console. Type directly at the inline `PS>` / `CMD>` prompt, use Up/Down arrows for command history, check the privilege badge (`Standard User` vs `Administrator (Elevated)`), and click **`⬆ Elevate (UAC)`** to request admin rights on the host when needed. |
+| **Files** | Full File Explorer for the remote machine. Includes Quick Access buttons (`All Drives`, `C:\`, `Desktop`, `Downloads`, `Documents`, `Temp`), clickable breadcrumb path bar, and buttons to **Upload**, **Download**, and **Delete** files. |
 | **Device** | Machine info - CPU, RAM, OS version, uptime, IP addresses, disk space. Loaded automatically when a session starts. |
 | **Monitor** | Live CPU, RAM, disk, network stats and top running processes. |
+
+*(Note: The **Screen** tab and 15 FPS capture are currently commented out for lightweight Server RMM mode and can be re-enabled anytime in `Viewer/MainWindow.xaml` and `Host/HostAgent.cs`).*
 
 ### Silent mode
 
@@ -263,11 +263,10 @@ Tell your sub-admin exactly this:
 
 ### To install Host.exe on a PC
 
-1. Copy **all three files** - `Host.exe`, `host.key`, and `host.token` - to the PC (USB, email, shared drive - any way)
-2. Keep all three files in the **same folder**
-3. Double-click **Host.exe** - it starts immediately and sits silently in the system tray
-4. Optional: to auto-start on boot, right-click `Host.exe` → Create Shortcut → paste the shortcut into:
-   `C:\Users\<username>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup`
+1. Extract **all files** from the package (`Host.exe`, `host.key`, `host.token`, `appsettings.json`) to a folder on the target PC
+2. Keep all files in the **same folder**
+3. Double-click **Host.exe** - it starts 100% silently (zero UAC prompt) and sits in the system tray
+4. **Auto-Start on Reboot is Automatic:** On first launch, `Host.exe` automatically registers itself in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`RemoteAdminHost`). Whenever the PC shuts down and turns back on, `Host.exe` starts and reconnects to the relay automatically.
 
 ### To connect to a machine
 
@@ -302,11 +301,16 @@ If you need to rebuild a Host EXE or share the Admin Token again:
 
 ## Part 7: Pushing Updates to Host.exe (Auto-Update)
 
-When you release a new version, every existing installation updates itself silently on next startup - no resharing required.
+When you release a new version of `Host.exe`, **every existing Host across every Sub-Admin updates itself automatically and silently** - you never have to reshare `Host.exe` or `.zip` packages with anyone.
 
-### How auto-update works (so you understand the variables)
+### How auto-update works (Startup + Live Background Check)
 
-Every time `Host.exe` starts, it calls your relay at `/api/version`. The relay returns three things:
+`Host.exe` checks your relay at `/api/version` in **three ways**:
+1. **On every startup / PC boot**
+2. **Immediately when reconnecting after a Render redeploy** (so as soon as you save the new version variables in Render and Render finishes redeploying, every online `Host.exe` reconnects, detects the update, downloads it, and restarts itself within seconds!)
+3. **Every 30 minutes in the background** while idle (not in an active remote session)
+
+The relay returns three fields from `/api/version` (authenticated using either the global token or any Sub-Admin's per-tenant `host.token`):
 
 | Field | Render env var | What it means |
 |-------|---------------|---------------|
@@ -314,9 +318,9 @@ Every time `Host.exe` starts, it calls your relay at `/api/version`. The relay r
 | `hostUrl` | `HOST_DOWNLOAD_URL` | The direct download link to the new `Host.exe` |
 | `hostSha256` | `HOST_EXE_SHA256` | SHA-256 fingerprint of that EXE |
 
-The client compares `HOST_VERSION` to its own compiled-in version. If the relay version is higher, it downloads from `HOST_DOWNLOAD_URL`, verifies the hash, then replaces itself.
+If `HOST_VERSION` on Render is higher than the running `Host.exe`'s compiled version (`1.0.0` -> `1.0.1`), `Host.exe` downloads the new binary from `HOST_DOWNLOAD_URL`, verifies its SHA-256 hash matches `HOST_EXE_SHA256`, swaps `Host.exe` on disk using a retry loop, and relaunches silently.
 
-> **If `HOST_DOWNLOAD_URL` is blank**, the relay omits update info entirely - clients don't try to update and no error occurs. Use this when you haven't set up GitHub Releases yet.
+> **Important:** `host.key` and `host.token` on each client machine are **NEVER** touched or overwritten during auto-update. Every machine across every Sub-Admin downloads the exact same generic `Host.exe` and keeps its own tenant credentials.
 
 ---
 
@@ -596,10 +600,11 @@ https://github.com/OjerIsaac/RemoteAdminTool/releases/download/v1.0.1/Viewer.exe
 
 | You did... | Update in Render |
 |-----------|------------------|
-| New Host.exe build | `HOST_VERSION` + `HOST_DOWNLOAD_URL` + `HOST_EXE_SHA256` |
-| New Viewer.exe build | `VIEWER_VERSION` + `VIEWER_DOWNLOAD_URL` + `VIEWER_EXE_SHA256` |
-| Relay server code only | Nothing - EXEs didn't change |
-| New sub-admin (new Host.exe) | `HOST_EXE_SHA256` only (version/URL stay same unless it's a new release) |
+| New Host.exe feature release | `HOST_VERSION` + `HOST_DOWNLOAD_URL` + `HOST_EXE_SHA256` |
+| New Viewer.exe feature release | `VIEWER_VERSION` + `VIEWER_DOWNLOAD_URL` + `VIEWER_EXE_SHA256` |
+| Both Host.exe and Viewer.exe released together | Update all 6 variables (`HOST_*` and `VIEWER_*`) |
+| Relay server code only | Push to GitHub (`git push`) - Render auto-deploys |
+| Created a new sub-admin (same code version) | Nothing on Render needs to change unless you also bumped `HOST_VERSION` |
 
 ---
 
@@ -620,12 +625,12 @@ The hash changes **only when the binary changes** - i.e. every time you run `bui
 
 | Situation | Do I update `HOST_EXE_SHA256`? |
 |-----------|-------------------------------|
-| I just ran `build.ps1` and published a new Host.exe | **YES** - copy the hash the script printed and paste it into Render |
-| I just ran `build.ps1 -PublishViewer` | **YES** - update `VIEWER_EXE_SHA256` in Render |
-| I pushed relay server code only (`git push`) | **NO** - the EXE didn't change, hash stays the same |
-| I created a new sub-admin and built their Host.exe | **YES** - the EXE changed, update `HOST_EXE_SHA256` |
+| I bumped `HOST_VERSION`, built a new `Host.exe`, and uploaded it to GitHub Releases | **YES** - copy the hash printed by `build.ps1` for that exact uploaded `Host.exe` and paste it into Render |
+| I bumped `VIEWER_VERSION`, ran `build.ps1 -PublishViewer`, and uploaded `Viewer.exe` to GitHub Releases | **YES** - update `VIEWER_EXE_SHA256` in Render |
+| I pushed relay server code only (`git push`) | **NO** - the EXE on GitHub Releases didn't change, hash stays the same |
+| I created a new sub-admin (`BuildHostForSubAdmin.bat`) without releasing a new version on GitHub | **NO** - `HOST_EXE_SHA256` must always match the file currently hosted at `HOST_DOWNLOAD_URL` on GitHub Releases |
 | I haven't set up auto-update yet (URL is blank) | **SKIP** - leave hash blank, clients won't try to update |
-| I forgot to update the hash after publishing | **Fix it now** - go to Render, paste the correct hash, save. Clients will retry on next startup. |
+| I forgot to update the hash after uploading a new release | **Fix it now** - go to Render, paste the hash of the uploaded EXE, save. All running Hosts will immediately reconnect and update once Render finishes redeploying. |
 
 ### Step-by-step reminder (already covered in Parts 7 & 8, summarised here)
 

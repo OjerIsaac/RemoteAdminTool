@@ -44,8 +44,7 @@ public static class ViewerUpdater
             if (string.IsNullOrWhiteSpace(downloadUrl) || !IsNewer(latestVersion, currentVersion))
                 return false;
 
-            await ApplyUpdateAsync(downloadUrl, expectedHash);
-            return true;
+            return await ApplyUpdateAsync(downloadUrl, expectedHash);
         }
         catch
         {
@@ -53,7 +52,7 @@ public static class ViewerUpdater
         }
     }
 
-    private static async Task ApplyUpdateAsync(string downloadUrl, string expectedSha256)
+    private static async Task<bool> ApplyUpdateAsync(string downloadUrl, string expectedSha256)
     {
         var exePath = Environment.ProcessPath
                       ?? Process.GetCurrentProcess().MainModule!.FileName!;
@@ -66,22 +65,23 @@ public static class ViewerUpdater
         if (!string.IsNullOrWhiteSpace(expectedSha256))
         {
             var actualHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-            if (!string.Equals(actualHash, expectedSha256.ToLowerInvariant(), StringComparison.Ordinal))
-                return; // Hash mismatch - silently abort
+            if (!string.Equals(actualHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.Ordinal))
+                return false; // Hash mismatch - silently abort
         }
 
         await File.WriteAllBytesAsync(newPath, bytes);
 
-        var script = $@"Start-Sleep -Seconds 2; Move-Item -Force '{newPath}' '{exePath}'; Start-Process '{exePath}'";
+        var script = $"for ($i = 0; $i -lt 15; $i++) {{ Start-Sleep -Seconds 1; try {{ Move-Item -Force -LiteralPath '{newPath}' -Destination '{exePath}' -ErrorAction Stop; break }} catch {{ }} }}; Start-Process -FilePath '{exePath}'";
         var psi = new ProcessStartInfo
         {
-            FileName  = "powershell.exe",
-            Arguments = $"-WindowStyle Hidden -NonInteractive -Command \"{script.Replace("\"", "\\\"")}\"",
+            FileName        = "powershell.exe",
+            Arguments       = $"-NoProfile -WindowStyle Hidden -NonInteractive -Command \"{script}\"",
             CreateNoWindow  = true,
             UseShellExecute = false,
             WindowStyle     = ProcessWindowStyle.Hidden
         };
         Process.Start(psi);
+        return true;
     }
 
     private static bool IsNewer(string candidate, string current)

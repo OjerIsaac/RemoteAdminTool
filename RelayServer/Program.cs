@@ -152,13 +152,21 @@ app.MapGet("/", () => Results.Ok(new
 }));
 
 // Auto-update version manifest
-// Requires X-Host-Token header matching the global host token (or any valid tenant token after Fix #1).
-app.MapGet("/api/version", (HttpContext context) =>
+// Accepts the global host token (Viewer.exe), super admin token, or any valid per-tenant HostToken/AdminToken (Host.exe).
+app.MapGet("/api/version", async (HttpContext context) =>
 {
-    var providedToken = context.Request.Headers["X-Host-Token"].FirstOrDefault() ?? "";
+    var providedToken = context.Request.Headers["X-Host-Token"].FirstOrDefault()?.Trim() ?? "";
     var globalToken   = Environment.GetEnvironmentVariable("Auth__HostToken") ?? "";
 
-    if (string.IsNullOrEmpty(providedToken) || providedToken != globalToken)
+    if (string.IsNullOrEmpty(providedToken))
+        return Results.Unauthorized();
+
+    var isAuthorized = providedToken == globalToken
+        || providedToken == superAdminToken
+        || (await tenantStore.GetByHostTokenAsync(providedToken)) is not null
+        || (await tenantStore.GetByAdminTokenAsync(providedToken)) is not null;
+
+    if (!isAuthorized)
         return Results.Unauthorized();
 
     var hostVersion   = Environment.GetEnvironmentVariable("HOST_VERSION")        ?? "1.0.0";
