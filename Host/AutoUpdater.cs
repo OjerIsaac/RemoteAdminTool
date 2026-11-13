@@ -98,6 +98,10 @@ public static class AutoUpdater
 
         await File.WriteAllBytesAsync(newPath, bytes);
 
+        // Mark in Registry that this machine is auto-updating so the newly downloaded Host.exe
+        // preserves this machine's existing Sub-Admin LicenseKeyHash & HostToken.
+        HostCredentials.MarkPreserveOnUpdate();
+
         // Hidden PowerShell process retries replacing the EXE until file lock is released, then relaunches
         var script = $"for ($i = 0; $i -lt 15; $i++) {{ Start-Sleep -Seconds 1; try {{ Move-Item -Force -LiteralPath '{newPath}' -Destination '{exePath}' -ErrorAction Stop; break }} catch {{ }} }}; Start-Process -FilePath '{exePath}'";
         var psi = new ProcessStartInfo

@@ -51,34 +51,14 @@ try
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
             .Build();
 
-        // ---- Read LicenseKey from host.key (sits next to Host.exe) ----
-        var keyFile    = Path.Combine(AppContext.BaseDirectory, "host.key");
-        var licenseKey = string.Empty;
-        if (File.Exists(keyFile))
-            licenseKey = (await File.ReadAllTextAsync(keyFile)).Trim();
+        // ---- Resolve LicenseKey & HostToken (supports standalone single-file EXE + sidecar override + auto-update registry) ----
+        var (licenseKey, authToken) = await HostCredentials.ResolveAsync();
 
-        if (string.IsNullOrEmpty(licenseKey))
+        if (string.IsNullOrEmpty(licenseKey) || string.IsNullOrEmpty(authToken))
         {
-            Log.Error("host.key is missing or empty in {Dir}.", AppContext.BaseDirectory);
+            Log.Error("Host credentials (LicenseKey/HostToken) are missing in {Dir}.", AppContext.BaseDirectory);
             System.Windows.Forms.MessageBox.Show(
-                "host.key is missing or invalid.\n\nPlease contact your administrator.",
-                "RemoteAdmin Host - License Error",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Error);
-            return;
-        }
-
-        // ---- Read HostToken from host.token (sits next to Host.exe, per-tenant) ----
-        var tokenFile  = Path.Combine(AppContext.BaseDirectory, "host.token");
-        var authToken  = string.Empty;
-        if (File.Exists(tokenFile))
-            authToken = (await File.ReadAllTextAsync(tokenFile)).Trim();
-
-        if (string.IsNullOrEmpty(authToken))
-        {
-            Log.Error("host.token is missing or empty in {Dir}.", AppContext.BaseDirectory);
-            System.Windows.Forms.MessageBox.Show(
-                "host.token is missing or invalid.\n\nPlease contact your administrator.",
+                "Host license configuration is missing or invalid.\n\nPlease contact your administrator.",
                 "RemoteAdmin Host - License Error",
                 System.Windows.Forms.MessageBoxButtons.OK,
                 System.Windows.Forms.MessageBoxIcon.Error);
@@ -101,7 +81,7 @@ try
                                       ? config["MachineName"]!
                                       : Environment.MachineName;
         var unattendedMode        = !bool.TryParse(config["UnattendedMode"], out var ua) || ua; // default: true
-        var allowRemoteSilentMode = bool.TryParse(config["AllowRemoteSilentMode"], out var arsp) && arsp;
+        var allowRemoteSilentMode = !bool.TryParse(config["AllowRemoteSilentMode"], out var arsp) || arsp; // default: true
 
         // MachineId is derived from hardware (CPU + mobo serial + MAC) - cannot be spoofed by copying a file
         var machineId = await HardwareFingerprint.ComputeAsync();
@@ -157,5 +137,97 @@ static void EnsureStartupRegistration()
     catch (Exception ex)
     {
         Log.Warning("Could not register auto-start in HKCU Run: {Message}", ex.Message);
+    }
+}
+
+namespace RemoteAdminTool.Host
+{
+    internal static class HostCredentials
+    {
+        private const string RegistrySubKey = @"Software\RemoteAdminTool\Host";
+
+        public static async Task<(string LicenseKeyHash, string HostToken)> ResolveAsync()
+        {
+            // 1. Optional sidecar files (for Visual Studio F5 debugging or manual override)
+            var keyFile   = Path.Combine(AppContext.BaseDirectory, "host.key");
+            var tokenFile = Path.Combine(AppContext.BaseDirectory, "host.token");
+
+            var fileKey   = File.Exists(keyFile)   ? (await File.ReadAllTextAsync(keyFile)).Trim()   : string.Empty;
+            var fileToken = File.Exists(tokenFile) ? (await File.ReadAllTextAsync(tokenFile)).Trim() : string.Empty;
+
+            if (!string.IsNullOrEmpty(fileKey) && !string.IsNullOrEmpty(fileToken))
+            {
+                SaveToRegistry(fileKey, fileToken);
+                return (fileKey, fileToken);
+            }
+
+            // 2. Check Registry if this EXE was just replaced by AutoUpdater (so it keeps its original Sub-Admin tenant)
+            var (regKey, regToken, preserveOnUpdate) = ReadFromRegistry();
+            if (preserveOnUpdate && !string.IsNullOrEmpty(regKey) && !string.IsNullOrEmpty(regToken))
+            {
+                SaveToRegistry(regKey, regToken, preserveOnUpdate: false);
+                return (regKey, regToken);
+            }
+
+            // 3. Compiled-in constants inside standalone Host.exe (built by BuildHostForSubAdmin.bat or DevBuildHost.bat)
+            if (!string.IsNullOrEmpty(HostConstants.DefaultLicenseKeyHash) &&
+                !string.IsNullOrEmpty(HostConstants.DefaultHostToken))
+            {
+                SaveToRegistry(HostConstants.DefaultLicenseKeyHash, HostConstants.DefaultHostToken);
+                return (HostConstants.DefaultLicenseKeyHash, HostConstants.DefaultHostToken);
+            }
+
+            // 4. Fallback to Registry if running a generic build without baked-in constants
+            if (!string.IsNullOrEmpty(regKey) && !string.IsNullOrEmpty(regToken))
+            {
+                return (regKey, regToken);
+            }
+
+            return (string.Empty, string.Empty);
+        }
+
+        public static void MarkPreserveOnUpdate()
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RegistrySubKey, writable: true);
+                key?.SetValue("PreserveOnUpdate", "1", Microsoft.Win32.RegistryValueKind.String);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void SaveToRegistry(string licenseKeyHash, string hostToken, bool preserveOnUpdate = false)
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RegistrySubKey, writable: true);
+                if (key is null) return;
+                key.SetValue("LicenseKeyHash", licenseKeyHash, Microsoft.Win32.RegistryValueKind.String);
+                key.SetValue("HostToken", hostToken, Microsoft.Win32.RegistryValueKind.String);
+                key.SetValue("PreserveOnUpdate", preserveOnUpdate ? "1" : "0", Microsoft.Win32.RegistryValueKind.String);
+            }
+            catch
+            {
+            }
+        }
+
+        private static (string LicenseKeyHash, string HostToken, bool PreserveOnUpdate) ReadFromRegistry()
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RegistrySubKey, writable: false);
+                if (key is null) return (string.Empty, string.Empty, false);
+                var lic      = (key.GetValue("LicenseKeyHash") as string)?.Trim() ?? string.Empty;
+                var tok      = (key.GetValue("HostToken") as string)?.Trim()      ?? string.Empty;
+                var preserve = (key.GetValue("PreserveOnUpdate") as string) == "1";
+                return (lic, tok, preserve);
+            }
+            catch
+            {
+                return (string.Empty, string.Empty, false);
+            }
+        }
     }
 }

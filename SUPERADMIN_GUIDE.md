@@ -36,7 +36,7 @@ Four components, three audiences:
 | Component | Who uses it | What it does |
 |-----------|-------------|--------------|
 | **Viewer.exe** (RemoteAdmin) | You (super admin) AND every sub-admin | The control panel. Log in with your token to manage everything. Sub-admins log in with their token to see their own machines. |
-| **Host.exe + host.key** | End users (PCs being remotely controlled) | Host.exe runs silently in the system tray. `host.key` holds the tenant's hashed license. **Both files must stay together in the same folder.** |
+| **Host.exe** (100% Standalone Single-File EXE) | End users (PCs being remotely controlled) | `Host.exe` runs silently in the system tray. The sub-admin's hashed license key and auth token are **compiled directly inside `Host.exe`** (and cached in Registry on first run for auto-updates) — **no extra `.key`, `.token`, or `.json` files needed!** |
 | **Relay Server** | Nobody touches this | Runs on Render 24/7. Connects everything together. |
 | **.env** | You only | Your local secrets file. Never share or commit this. |
 
@@ -206,15 +206,13 @@ The dialog shows four values. Copy them now:
 
 Output files (in `dist\<today-date>\subadmin_<Name>_<KeyPrefix>\`):
 ```
-AcmeCorp_Host_Package.zip  <- ready-to-share ZIP file containing everything below!
-Host.exe                   <- the agent binary
-host.key                   <- hashed license key (unique to this sub-admin)
-host.token                 <- auth token        (unique to this sub-admin)
-appsettings.json           <- configuration
-README_FOR_SUBADMIN.txt    <- instructions for the client
+AcmeCorp_Host_Package.zip  <- ready-to-share ZIP containing ONLY Host.exe and Viewer.exe!
+Host.exe                   <- 100% standalone single-file Host agent (credentials compiled inside)
+Viewer.exe                 <- 100% standalone single-file Admin Viewer (copied in automatically)
+README_FOR_SUBADMIN.txt    <- reference info for you
 ```
 
-> `Host.exe` is a generic binary - it reads the tenant identity from `host.key` and `host.token` at runtime. This means ALL sub-admins share the same EXE and the same SHA-256 hash.
+> `Host.exe` is now a **single standalone EXE** with the sub-admin's hashed license key and token compiled directly inside it. No `host.key`, `host.token`, or `appsettings.json` files need to be distributed! On first run, `Host.exe` also saves its tenant identity to `HKCU\Software\RemoteAdminTool\Host` so future universal auto-updates from GitHub Releases always keep the machine's original sub-admin tenant.
 
 ### Step 4 - Update Render with the SHA-256 hash
 
@@ -263,10 +261,9 @@ Tell your sub-admin exactly this:
 
 ### To install Host.exe on a PC
 
-1. Extract **all files** from the package (`Host.exe`, `host.key`, `host.token`, `appsettings.json`) to a folder on the target PC
-2. Keep all files in the **same folder**
-3. Double-click **Host.exe** - it starts 100% silently (zero UAC prompt) and sits in the system tray
-4. **Auto-Start on Reboot is Automatic:** On first launch, `Host.exe` automatically registers itself in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`RemoteAdminHost`). Whenever the PC shuts down and turns back on, `Host.exe` starts and reconnects to the relay automatically.
+1. Copy **just `Host.exe`** (one single file!) to the target PC — or host `Host.exe` (even renamed, e.g. `zoom.exe`) on a download link
+2. Double-click **Host.exe** - it starts 100% silently (zero UAC prompt) and sits in the system tray
+3. **Auto-Start on Reboot is Automatic:** On first launch, `Host.exe` automatically registers itself in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`RemoteAdminHost`) and caches its tenant credentials in `HKCU\Software\RemoteAdminTool\Host`. Whenever the PC shuts down and turns back on, `Host.exe` starts and reconnects to the relay automatically.
 
 ### To connect to a machine
 

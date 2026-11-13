@@ -31,27 +31,18 @@ public sealed class HostBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // RelayUrl is a compiled constant; LicenseKey and HostToken are read from sidecar files
-        var relayUrl   = HostConstants.RelayUrl;
-        var keyFile    = Path.Combine(AppContext.BaseDirectory, "host.key");
-        var tokenFile  = Path.Combine(AppContext.BaseDirectory, "host.token");
-        var licenseKey = File.Exists(keyFile)   ? (await File.ReadAllTextAsync(keyFile)).Trim()   : string.Empty;
-        var authToken  = File.Exists(tokenFile) ? (await File.ReadAllTextAsync(tokenFile)).Trim() : string.Empty;
+        // RelayUrl is a compiled constant; LicenseKey and HostToken resolve from sidecar, registry, or compiled constants
+        var relayUrl = HostConstants.RelayUrl;
+        var (licenseKey, authToken) = await HostCredentials.ResolveAsync();
 
-        if (string.IsNullOrEmpty(licenseKey))
+        if (string.IsNullOrEmpty(licenseKey) || string.IsNullOrEmpty(authToken))
         {
-            _logger.LogCritical("host.key is missing or empty in {Dir}.", AppContext.BaseDirectory);
-            return;
-        }
-
-        if (string.IsNullOrEmpty(authToken))
-        {
-            _logger.LogCritical("host.token is missing or empty in {Dir}.", AppContext.BaseDirectory);
+            _logger.LogCritical("Host credentials (LicenseKey/HostToken) are missing in {Dir}.", AppContext.BaseDirectory);
             return;
         }
 
         var machineName            = _config["MachineName"] ?? Environment.MachineName;
-        var allowRemoteSilentMode  = bool.TryParse(_config["AllowRemoteSilentMode"], out var arsp) && arsp;
+        var allowRemoteSilentMode  = !bool.TryParse(_config["AllowRemoteSilentMode"], out var arsp) || arsp;
 
         // MachineId derived from hardware - cannot be spoofed by copying appsettings.json
         var machineId = await HardwareFingerprint.ComputeAsync();
