@@ -1,7 +1,9 @@
 # MakeDevHostKey.ps1
 # ============================================================
-# Creates host.key AND host.token for local dev/debugging.
-# All output is saved exclusively under dist\YYYY-MM-DD\host_dev\.
+# Saves Local Dev LicenseKeyHash and HostToken into .env
+# (DEV_LICENSE_KEY_HASH and DEV_HOST_TOKEN) so DevBuildHost.bat
+# compiles a 100% standalone single-file Host.exe with ZERO
+# .key or .token files in dist\!
 #
 # Usage:
 #   .\MakeDevHostKey.ps1 -LicenseKey <paste-license-key> -HostToken <paste-host-token>
@@ -15,53 +17,40 @@ param(
     [string]$HostToken
 )
 
-$root        = $PSScriptRoot
-$dateStr     = (Get-Date).ToString("yyyy-MM-dd")
-$distDevHost = Join-Path $root "dist\$dateStr\host_dev"
-$binDebug    = Join-Path $root "Host\bin\Debug\net8.0-windows"
+$root    = $PSScriptRoot
+$envFile = Join-Path $root ".env"
+
+if (-not (Test-Path $envFile)) {
+    Write-Error ".env file not found at $envFile"
+    exit 1
+}
 
 # 1. Compute SHA-256 of the raw license key
-$bytes     = [System.Text.Encoding]::UTF8.GetBytes($LicenseKey)
+$bytes     = [System.Text.Encoding]::UTF8.GetBytes($LicenseKey.Trim())
 $sha256    = [System.Security.Cryptography.SHA256]::Create()
 $hashBytes = $sha256.ComputeHash($bytes)
 $hash      = [System.BitConverter]::ToString($hashBytes).Replace("-","").ToLowerInvariant()
+$token     = $HostToken.Trim()
 
-# 2. Write to dist\YYYY-MM-DD\host_dev\ (all dist files live in root dist\ by date)
-New-Item -ItemType Directory -Path $distDevHost -Force | Out-Null
-Set-Content -Path (Join-Path $distDevHost "host.key")   -Encoding UTF8 -NoNewline -Value $hash
-Set-Content -Path (Join-Path $distDevHost "host.token") -Encoding UTF8 -NoNewline -Value $HostToken
-
-# Copy appsettings.json into host_dev if present in Host\
-$appSettings = Join-Path $root "Host\appsettings.json"
-if (Test-Path $appSettings) {
-    Copy-Item $appSettings (Join-Path $distDevHost "appsettings.json") -Force
+# 2. Update DEV_LICENSE_KEY_HASH and DEV_HOST_TOKEN in .env
+$content = Get-Content $envFile -Raw
+if ($content -match "(?m)^DEV_LICENSE_KEY_HASH=.*$") {
+    $content = $content -replace "(?m)^DEV_LICENSE_KEY_HASH=.*$", "DEV_LICENSE_KEY_HASH=$hash"
+} else {
+    $content += "`nDEV_LICENSE_KEY_HASH=$hash"
 }
-
-# 3. Write to Host\bin\Debug\net8.0-windows\ if it exists (for Visual Studio F5 debugging)
-if (Test-Path $binDebug) {
-    Set-Content -Path (Join-Path $binDebug "host.key")   -Encoding UTF8 -NoNewline -Value $hash
-    Set-Content -Path (Join-Path $binDebug "host.token") -Encoding UTF8 -NoNewline -Value $HostToken
+if ($content -match "(?m)^DEV_HOST_TOKEN=.*$") {
+    $content = $content -replace "(?m)^DEV_HOST_TOKEN=.*$", "DEV_HOST_TOKEN=$token"
+} else {
+    $content += "`nDEV_HOST_TOKEN=$token"
 }
-
-# Record human-readable metadata for tracking
-$metaContent = @"
-Created:       $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Type:          Local Dev / Test Host
-LicenseKey:    $LicenseKey
-LicenseHash:   $hash
-HostToken:     $HostToken
-Folder:        dist\$dateStr\host_dev
-"@
-Set-Content -Path (Join-Path $distDevHost "license_info.txt") -Encoding UTF8 -Value $metaContent
+Set-Content -Path $envFile -Encoding UTF8 -NoNewline -Value $content
 
 Write-Host ""
-Write-Host "Done! Keys generated in dist folder:" -ForegroundColor Green
-Write-Host "  Dev Host folder: dist\$dateStr\host_dev\" -ForegroundColor Cyan
-Write-Host "  host.key:        dist\$dateStr\host_dev\host.key" -ForegroundColor Cyan
-Write-Host "  host.token:      dist\$dateStr\host_dev\host.token" -ForegroundColor Cyan
+Write-Host "Done! Local Dev Host credentials saved into .env (zero .key/.token files needed in dist!):" -ForegroundColor Green
+Write-Host "  DEV_LICENSE_KEY_HASH = $hash" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "To build and run the Host:"
-Write-Host "  1. Double-click DevBuildHost.bat (builds Host.exe directly into dist\$dateStr\host_dev\)"
-Write-Host "  2. Run dist\$dateStr\host_dev\Host.exe"
-Write-Host "  (Or press F5 in Visual Studio)"
+Write-Host "To build and run your standalone Dev Host:"
+Write-Host "  1. Run .\DevBuildHost.bat (produces ONLY dist\<date>\host_dev\Host.exe)"
+Write-Host "  2. Run dist\<date>\host_dev\Host.exe"
 Write-Host ""

@@ -253,39 +253,20 @@ HOW IT WORKS (SINGLE-FILE EXE):
     }
 }
 
-# ---- Dev Host publish (bakes dev keys directly into Host.exe + keeps sidecar files for VS F5) ----
+# ---- Dev Host publish (bakes dev keys from .env directly into Host.exe - zero .key/.token files!) ----
 if ($PublishHostDev) {
     Write-Host ""
     Write-Host "Publishing standalone Host.exe for local dev testing..." -ForegroundColor Yellow
     $dateStr     = (Get-Date).ToString("yyyy-MM-dd")
     $distDevHost = Join-Path $root "dist\$dateStr\host_dev"
-    $binDebug    = Join-Path $root "Host\bin\Debug\net8.0-windows"
 
-    if (-not (Test-Path (Join-Path $distDevHost "host.key"))) {
-        # Search for previous dev keys from any earlier date in dist\*\host_dev\
-        $prevDev = Get-ChildItem (Join-Path $root "dist") -Directory -ErrorAction SilentlyContinue |
-            Sort-Object Name -Descending |
-            ForEach-Object { Join-Path $_.FullName "host_dev" } |
-            Where-Object { Test-Path (Join-Path $_ "host.key") } |
-            Select-Object -First 1
+    $devKeyHash = $envVars["DEV_LICENSE_KEY_HASH"]
+    $devToken   = $envVars["DEV_HOST_TOKEN"]
 
-        if ($prevDev) {
-            New-Item -ItemType Directory -Path $distDevHost -Force | Out-Null
-            Copy-Item (Join-Path $prevDev "host.key") $distDevHost -Force
-            Copy-Item (Join-Path $prevDev "host.token") $distDevHost -Force
-            if (Test-Path (Join-Path $prevDev "license_info.txt")) {
-                Copy-Item (Join-Path $prevDev "license_info.txt") $distDevHost -Force
-            }
-            Write-Host "  Carried forward existing dev keys from: $prevDev" -ForegroundColor Cyan
-        }
-    }
-
-    if (-not (Test-Path (Join-Path $distDevHost "host.key"))) {
-        Write-Error "host.key not found in $distDevHost - run MakeDevHostKey.ps1 first to generate keys."
+    if (-not $devKeyHash -or -not $devToken) {
+        Write-Error "DEV_LICENSE_KEY_HASH or DEV_HOST_TOKEN not found in .env - run MakeDevHostKey.ps1 first."
     } else {
-        $devKeyHash = (Get-Content (Join-Path $distDevHost "host.key") -Raw).Trim()
-        $devToken   = (Get-Content (Join-Path $distDevHost "host.token") -Raw).Trim()
-
+        New-Item -ItemType Directory -Path $distDevHost -Force | Out-Null
         try {
             Set-HostConstants $devKeyHash $devToken
             & dotnet publish "$root\Host\Host.csproj" -c Release -r win-x64 --self-contained true `
@@ -298,16 +279,10 @@ if ($PublishHostDev) {
         }
 
         if ($devPubExit -eq 0) {
-            # Remove publish artifacts but keep Host.exe, dev key files, and logs
-            Get-ChildItem $distDevHost -Exclude "Host.exe","host.key","host.token","license_info.txt","logs" | Remove-Item -Force -Recurse
+            # Keep ONLY Host.exe (and logs folder if present) - zero .key or .token files!
+            Get-ChildItem $distDevHost -Exclude "Host.exe","logs" | Remove-Item -Force -Recurse
 
-            # Also ensure Host\bin\Debug\net8.0-windows has the keys for F5 / dotnet run testing
-            if (Test-Path $binDebug) {
-                Copy-Item (Join-Path $distDevHost "host.key") $binDebug -Force
-                Copy-Item (Join-Path $distDevHost "host.token") $binDebug -Force
-            }
-
-            Write-Host "  Host.exe rebuilt -> $distDevHost\Host.exe (standalone single-file EXE)" -ForegroundColor Green
+            Write-Host "  Host.exe rebuilt -> $distDevHost\Host.exe (100% standalone single-file EXE!)" -ForegroundColor Green
         }
     }
 }
