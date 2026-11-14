@@ -5,6 +5,50 @@ Keep it open whenever you are operating the software.
 
 ---
 
+## Platform Capabilities & Feature Showcase (At a Glance)
+
+Use this section when pitching, demoing, or explaining what **RemoteAdminTool** does to clients and Sub-Admins.
+
+### 1. Multi-Tenant SaaS RMM Architecture (FleetDeck-Style)
+- **Super Admin (Platform Owner)**: Global visibility over **all Sub-Admins** and **every Host machine** across the entire platform. Can create Sub-Admins, set subscription **Seat Limits (`MaxHosts`)**, **Rotate Admin Tokens** in 1 click, and **Suspend/Kick** unpaid Sub-Admins instantly while still keeping full access to all deployed Hosts.
+- **Sub-Admins (Your Paying Clients)**: Each Sub-Admin logs into `Viewer.exe` with their own `AdminToken` and sees **only their own fleet of Host machines** (100% isolated from other Sub-Admins).
+- **NAT-Traversing Cloud Relay**: Hosts and Viewers connect outbound over encrypted WebSockets (`wss://`) through your 24/7 cloud Relay Server. Zero port-forwarding or firewall setup is ever needed on client networks.
+
+### 2. Zero-Friction Single-File Deployment
+- **Just Two Standalone EXEs (`Host.exe` & `Viewer.exe`)**:
+  - **`Host.exe`** is a 100% self-contained single-file executable (~60% compressed, no `.NET` install required on the target PC, and **zero** extra `.key`, `.token`, or `.json` files needed).
+  - Sub-Admins can rename `Host.exe` to anything (e.g. `zoom.exe`, `support.exe`), upload that single `.exe` to a website, or copy it via USB.
+  - **100% Silent Startup (`asInvoker`)**: Launches silently into the system tray with zero UAC prompt on startup.
+  - **Automatic Persistence on Reboot**: Automatically registers itself in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`RemoteAdminHost`) on first run so the Host reconnects automatically every time the PC turns back on.
+
+### 3. Persistent Managed Nodes List & Real-Time Status Badges
+- Every machine that registers under a tenant is permanently saved in PostgreSQL and stays visible in the **Managed Nodes** sidebar even when powered off:
+  - 🔵 **`Connected`**: Currently in an active remote session.
+  - 🟡 **`Disconnected`**: Session was ended by the admin (`End Session`); the Host remains online and ready to reconnect in 1 click.
+  - 🟢 **`Online`**: Host PC is online on the Relay and idle/ready.
+  - 🔴 **`Offline`**: Host PC is turned off or offline (displays `Last seen <date/time>`).
+
+### 4. Remote Administration Tools (Inside a Session)
+- **Direct-Typing Interactive Terminal (`PowerShell` & `CMD`)**:
+  - Type commands directly inline at the `PS>` or `CMD>` prompt (just like a native terminal) with `Up`/`Down` command history and `cls`/`clear` support.
+  - Run `.exe`, `.bat`, `.ps1`, `.vbs` scripts, `Get-ChildItem`, service management, registry edits, or networking tools.
+  - **Live Privilege Badge & On-Demand UAC Elevation**: Shows whether the Host is running as `Standard User` or `Administrator (Elevated)`, with a 1-click **`⬆ Elevate (UAC)`** button to relaunch the Host with full Administrator privileges when needed.
+- **Full Remote File Explorer (`Files` Tab)**:
+  - Quick Access bar (`All Drives`, `C:\`, `Desktop`, `Downloads`, `Documents`, `Temp`) + clickable path bar and file type icons.
+  - **Upload** files from Admin PC to Host, **Download** files from Host to Admin PC, and **Delete** files/folders on the Host.
+- **Hardware & OS Inventory (`Device` Tab)**:
+  - Instant summary of Hostname, Domain\Username, Windows Version & Build, Timezone, Uptime, CPU model & core count, total RAM, System Drive capacity/free space, and all local IP addresses.
+- **Live Performance & Process Manager (`Monitor` Tab)**:
+  - Real-time streaming of CPU usage (overall + per-core), RAM usage, Disk Read/Write MB/s, Network Sent/Received MB/s, per-volume storage bars, and **Top Running Processes** with a **Terminate Process (`Kill PID`)** button.
+  - Deep hardware inventory (Motherboard, BIOS, physical RAM sticks, GPU, physical disks, and network adapters).
+
+### 5. Enterprise Security & Silent Auto-Updates
+- **Compile-Time Byte Obfuscation**: Every build encrypts `RelayUrl`, `LicenseKeyHash`, and `HostToken` with a random 32-byte XOR key so no plaintext URLs or tokens appear in `strings` or decompilers.
+- **Hardware Fingerprinting (`MachineId`)**: Derived from CPU ID + Motherboard Serial + MAC Address so seat limits cannot be bypassed by copying files.
+- **Zero-Touch Silent Auto-Updates**: When you release a new `Host.exe` or `Viewer.exe` on GitHub Releases and update Render, every Host and Viewer across every Sub-Admin verifies the `SHA-256` hash, downloads the update, swaps the binary, and restarts silently — while preserving each machine's original Sub-Admin tenant identity.
+
+---
+
 ## Before You Start - One-Time Setup
 
 Do this once before anything else.
@@ -178,8 +222,8 @@ Do this whenever a new sub-admin joins your platform.
 1. Open Viewer.exe and log in as super admin
 2. Click the **Tenants** tab
 3. Click **+ New**
-4. Type the sub-admin's name and email → click **Create Tenant**
-5. A credentials dialog appears - **do not close it yet**
+4. Type the sub-admin's **Display Name**, **Admin Email**, and **Max Allowed Hosts (Seat Limit)** (defaults to `25`, or enter `0` for unlimited) → click **Create Tenant**
+5. The new sub-admin appears in your **Tenants** list immediately, and the credentials dialog opens - **do not close it yet**
 
 ### Step 2 - Copy the credentials
 
@@ -275,14 +319,17 @@ Tell your sub-admin exactly this:
 
 ---
 
-## Part 5: Viewing Credentials for an Existing Sub-Admin
+## Part 5: Viewing Credentials, Rotating Tokens & Changing Seat Limits
 
-If you need to rebuild a Host EXE or share the Admin Token again:
+If you need to view credentials, revoke/rotate a leaked Admin Token, or upgrade/downgrade a sub-admin's Max Hosts seat limit:
 
 1. Open Viewer.exe → log in as super admin
 2. Click **Tenants** tab
 3. Click **Details** next to the sub-admin
-4. The credentials dialog opens - copy buttons for all four values (License Key, Host Token, Admin Token, Tenant ID)
+4. Inside the **Credentials** dialog:
+   - **Copy Buttons**: Copy `Tenant ID`, `License Key`, `Admin Token`, or `Host Token` at any time.
+   - **🔄 Rotate (next to Admin Token)**: Immediately invalidates the sub-admin's old `Admin Token`, kicks out any currently logged-in `Viewer.exe` using the old token, and generates a brand-new `Admin Token` (without affecting any of their deployed `Host.exe` machines!).
+   - **💾 Save Limit (next to Max Allowed Hosts)**: Change the sub-admin's maximum allowed host machines (`0` = unlimited, or any number like `10`, `25`, `100`) and click **Save Limit** to apply immediately.
 
 ---
 
@@ -663,12 +710,14 @@ Render automatically redeploys. Takes about 2 minutes. Schema migrations run aut
 
 | Protection | What it does |
 |-----------|--------------|
-| **Per-tenant Host Token** | Each sub-admin's `Host.exe` carries a unique token. Even if they extract it, it cannot be used to impersonate another tenant. |
-| **Hashed host.key** | `host.key` contains a SHA-256 hash of the license key - not the raw key. Reading the file doesn't reveal the actual secret. |
-| **Hardware MachineId** | Each machine's ID is derived from CPU + motherboard + MAC. Copying `Host.exe` to another machine generates a different ID - bypassing seat limits is not possible by file copying. |
-| **Rate limiting** | The relay allows max 15 connections/IP/minute. After 5 auth failures from one IP, that IP is banned for 10 minutes. |
-| **SHA-256 update verification** | Before applying any auto-update, the client verifies the downloaded EXE matches the SHA-256 hash you set in Render. A tampered file is rejected. |
-| **Authenticated /api/version** | The version endpoint requires an `X-Host-Token` header - anonymous probing returns 401. |
+| **Compile-Time Byte Obfuscation** | Every build generates a random 32-byte key and XOR+salt encodes `RelayUrl`, `DefaultLicenseKeyHash`, and `HostToken` into byte arrays so no plaintext URLs or tokens exist in the `.exe` string table. |
+| **Per-Tenant Host Token & Hashed LicenseKey** | Each sub-admin's `Host.exe` carries a unique token and SHA-256 license hash. Even if extracted, it can never access another tenant or the Super Admin account. |
+| **Constant-Time Token Auth** | The Relay Server uses `CryptographicOperations.FixedTimeEquals` for token verification to eliminate timing side-channel attacks. |
+| **1-Click Admin Token Rotation** | You can revoke and rotate any sub-admin's `Admin Token` in 1 click (**Tenants → Details → 🔄 Rotate**), immediately kicking any open Viewer session without breaking deployed Hosts. |
+| **Hardware MachineId & Seat Limits (`MaxHosts`)** | Each machine's ID is derived from CPU + motherboard + MAC. Copying `Host.exe` to another PC generates a new ID, and the Relay enforces each tenant's `MaxHosts` seat limit. |
+| **Rate Limiting & Auto-Ban** | The relay allows max 15 connections/IP/minute. After 5 auth failures from one IP, that IP is banned for 10 minutes. |
+| **SHA-256 Update Verification** | Before applying any auto-update, the client verifies the downloaded EXE matches the SHA-256 hash you set in Render. A tampered file is rejected. |
+| **Authenticated `/api/version`** | The version endpoint requires a valid `X-Host-Token` header - anonymous probing returns `401 Unauthorized`. |
 
 ---
 

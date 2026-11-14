@@ -366,12 +366,14 @@ public sealed class ConnectionHub
                     var suspend = JsonSerializer.Deserialize<SuspendTenantMessage>(payload);
                     await _tenantStore.SetActiveAsync(suspend.TenantId, false);
                     await DisconnectTenantAdminAsync(suspend.TenantId, ct);
+                    await SendTenantListAsync(admin, ct);
                     Console.WriteLine($"[Hub] Tenant suspended and kicked: {suspend.TenantId}");
                     break;
 
                 case MessageType.ResumeTenant when admin.IsSuperAdmin:
                     var resume = JsonSerializer.Deserialize<ResumeTenantMessage>(payload);
                     await _tenantStore.SetActiveAsync(resume.TenantId, true);
+                    await SendTenantListAsync(admin, ct);
                     Console.WriteLine($"[Hub] Tenant resumed: {resume.TenantId}");
                     break;
 
@@ -602,6 +604,7 @@ public sealed class ConnectionHub
 
             await MessageFraming.WriteFrameAsync(admin.Stream, MessageType.CreateTenantAck,
                 JsonSerializer.SerializeToUtf8Bytes(ack), ct);
+            await SendTenantListAsync(admin, ct);
         }
         catch (Exception ex)
         {
@@ -609,6 +612,7 @@ public sealed class ConnectionHub
 
             await MessageFraming.WriteFrameAsync(admin.Stream, MessageType.CreateTenantAck,
                 JsonSerializer.SerializeToUtf8Bytes(ack), ct);
+            await SendTenantListAsync(admin, ct);
         }
     }
 

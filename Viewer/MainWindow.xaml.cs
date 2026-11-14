@@ -292,19 +292,41 @@ public partial class MainWindow : Window
         });
     }
 
-    private int _pendingCreatedMaxHosts = 25;
+    private string _pendingCreatedName     = string.Empty;
+    private string _pendingCreatedEmail    = string.Empty;
+    private int    _pendingCreatedMaxHosts = 25;
 
     private void OnTenantCreated(object? sender, CreateTenantAckMessage ack)
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(async () =>
         {
             if (!ack.Success)
             {
                 MessageBox.Show($"Failed to create tenant: {ack.Error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
+
+            // Immediately insert the newly created tenant into the list so it is visible right away
+            if (!string.IsNullOrEmpty(ack.TenantId) && Tenants.All(t => t.TenantId != ack.TenantId))
+            {
+                var newInfo = new TenantInfoMessage(
+                    ack.TenantId!,
+                    _pendingCreatedName,
+                    _pendingCreatedEmail,
+                    0,
+                    0,
+                    true,
+                    DateTime.UtcNow,
+                    ack.LicenseKey ?? "",
+                    ack.AdminToken ?? "",
+                    ack.HostToken ?? "",
+                    _pendingCreatedMaxHosts);
+                Tenants.Insert(0, new TenantViewModel(newInfo));
+            }
+
             TenantCredentialsDialog.ShowNewTenant(this, _client, ack.TenantId!, ack.LicenseKey!, ack.AdminToken!, ack.HostToken ?? "", _pendingCreatedMaxHosts);
-            _ = _client?.RequestTenantListAsync();
+            if (_client is not null)
+                await _client.RequestTenantListAsync();
         });
     }
 
@@ -314,6 +336,8 @@ public partial class MainWindow : Window
         var dialog = new CreateTenantDialog();
         if (dialog.ShowDialog() == true)
         {
+            _pendingCreatedName     = dialog.DisplayName;
+            _pendingCreatedEmail    = dialog.AdminEmail;
             _pendingCreatedMaxHosts = dialog.MaxHosts;
             await _client.CreateTenantAsync(dialog.DisplayName, dialog.AdminEmail, dialog.MaxHosts);
         }
@@ -321,8 +345,9 @@ public partial class MainWindow : Window
 
     private void TenantList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (TenantList.SelectedItem is TenantViewModel)
-            TabNodesButton_Click(sender, new RoutedEventArgs());
+        // Keep selection cleared so clicking a Sub-Admin row stays on the Tenants tab
+        if (TenantList.SelectedIndex != -1)
+            TenantList.SelectedIndex = -1;
     }
 
     private async void SuspendTenantButton_Click(object sender, RoutedEventArgs e)
