@@ -109,11 +109,19 @@ public sealed class TenantStore
                     "TenantId"    varchar(64)  NOT NULL REFERENCES "Tenants"("TenantId") ON DELETE CASCADE,
                     "MachineId"   varchar(64)  NOT NULL,
                     "MachineName" varchar(256) NOT NULL DEFAULT '',
+                    "OsVersion"   varchar(128) NOT NULL DEFAULT '',
                     "FirstSeenAt" timestamptz  NOT NULL DEFAULT now(),
                     "LastSeenAt"  timestamptz  NOT NULL DEFAULT now(),
                     "IsAllowed"   boolean      NOT NULL DEFAULT true,
                     UNIQUE ("TenantId", "MachineId")
                 );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+
+            // v4: add OsVersion column to RegisteredHosts for persistent offline node display
+            cmd.CommandText = """
+                ALTER TABLE "RegisteredHosts"
+                ADD COLUMN IF NOT EXISTS "OsVersion" varchar(128) NOT NULL DEFAULT '';
                 """;
             await cmd.ExecuteNonQueryAsync();
 

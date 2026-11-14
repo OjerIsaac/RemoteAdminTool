@@ -229,8 +229,21 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
+            var prevStates = Nodes.ToDictionary(
+                n => n.MachineId,
+                n => (n.IsConnected, n.WasSessionDisconnected));
+
             Nodes.Clear();
-            foreach (var host in hosts) Nodes.Add(new NodeViewModel(host));
+            foreach (var host in hosts)
+            {
+                var vm = new NodeViewModel(host);
+                if (prevStates.TryGetValue(host.MachineId, out var prev))
+                {
+                    vm.IsConnected            = host.IsOnline && prev.IsConnected;
+                    vm.WasSessionDisconnected = host.IsOnline && prev.WasSessionDisconnected;
+                }
+                Nodes.Add(vm);
+            }
         });
     }
 
@@ -238,8 +251,17 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (Nodes.All(n => n.MachineId != msg.MachineId))
-                Nodes.Add(new NodeViewModel(new HostInfoMessage(msg.MachineId, msg.MachineName, "", true, DateTime.UtcNow, msg.TenantId)));
+            var existing = Nodes.FirstOrDefault(n => n.MachineId == msg.MachineId);
+            if (existing is not null)
+            {
+                existing.IsOnline = true;
+                existing.LastSeen = DateTime.UtcNow;
+            }
+            else
+            {
+                Nodes.Insert(0, new NodeViewModel(
+                    new HostInfoMessage(msg.MachineId, msg.MachineName, "", true, DateTime.UtcNow, msg.TenantId)));
+            }
         });
     }
 
@@ -247,8 +269,14 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            for (int i = Nodes.Count - 1; i >= 0; i--)
-                if (Nodes[i].MachineId == msg.MachineId) { Nodes.RemoveAt(i); break; }
+            var existing = Nodes.FirstOrDefault(n => n.MachineId == msg.MachineId);
+            if (existing is not null)
+            {
+                existing.IsConnected            = false;
+                existing.WasSessionDisconnected = false;
+                existing.IsOnline               = false;
+                existing.LastSeen               = DateTime.UtcNow;
+            }
             if (_activeSessionMachineId == msg.MachineId) EndSessionUI();
         });
     }
@@ -342,7 +370,19 @@ public partial class MainWindow : Window
             _currentRemotePath = "\\";
             TabConsoleBtn_Click(this, new RoutedEventArgs());
             // Mark the active node as connected
-            foreach (var n in Nodes) n.IsConnected = (n.MachineId == msg.MachineId);
+            foreach (var n in Nodes)
+            {
+                if (n.MachineId == msg.MachineId)
+                {
+                    n.WasSessionDisconnected = false;
+                    n.IsConnected            = true;
+                    n.IsOnline               = true;
+                }
+                else
+                {
+                    n.IsConnected = false;
+                }
+            }
         });
     }
 
@@ -415,6 +455,16 @@ public partial class MainWindow : Window
     private async void NodeList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_client is null || NodeList.SelectedItem is not NodeViewModel selectedNode) return;
+        if (!selectedNode.IsOnline)
+        {
+            NodeList.SelectedIndex = -1;
+            MessageBox.Show(
+                $"'{selectedNode.MachineName}' is currently offline.\n\nIt will automatically turn green (Online) as soon as the host PC powers on and connects to the Relay.",
+                "Host Offline",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
         ConnectingLabel.Text         = $"Connecting to {selectedNode.MachineName}...";
         ConnectingOverlay.Visibility = Visibility.Visible;
         await _client.ConnectToHostAsync(selectedNode.MachineId);
@@ -429,13 +479,15 @@ public partial class MainWindow : Window
     {
         if (_client is not null && _activeSessionMachineId is not null)
         {
-            await _client.DisconnectFromHostAsync(_activeSessionMachineId);
-            EndSessionUI();
+            var endedMachineId = _activeSessionMachineId;
+            await _client.DisconnectFromHostAsync(endedMachineId);
+            EndSessionUI(endedMachineId);
         }
     }
 
-    private void EndSessionUI()
+    private void EndSessionUI(string? disconnectedMachineId = null)
     {
+        var prevMachineId = disconnectedMachineId ?? _activeSessionMachineId;
         _activeSessionMachineId = null;
         _remoteWidth = 0;
         _remoteHeight = 0;
@@ -493,7 +545,12 @@ public partial class MainWindow : Window
 
         // Clear connected state and selection in node list so the node can be re-selected immediately
         NodeList.SelectedIndex = -1;
-        foreach (var n in Nodes) n.IsConnected = false;
+        foreach (var n in Nodes)
+        {
+            if (n.MachineId == prevMachineId && n.IsOnline)
+                n.WasSessionDisconnected = true;
+            n.IsConnected = false;
+        }
     }
 
     // ---- Session tab switching ----
@@ -1087,6 +1144,7 @@ public class TenantViewModel
     public string DisplayName     { get; }
     public string AdminEmail      { get; }
     public int    OnlineNodeCount { get; }
+    public int    TotalNodeCount  { get; }
     public int    MaxHosts        { get; }
     public bool   IsActive        { get; }
     public string LicenseKey      { get; }
@@ -1094,8 +1152,8 @@ public class TenantViewModel
     public string HostToken       { get; }
     public string StatusLabel  => IsActive ? "Active" : "Suspended";
     public string NodesSummary => MaxHosts > 0
-        ? $"{OnlineNodeCount} / {MaxHosts} nodes  -  {AdminEmail}"
-        : $"{OnlineNodeCount} nodes (∞)  -  {AdminEmail}";
+        ? $"{OnlineNodeCount} online ({TotalNodeCount}/{MaxHosts} seats)  -  {AdminEmail}"
+        : $"{OnlineNodeCount}/{TotalNodeCount} online (∞)  -  {AdminEmail}";
 
     public TenantViewModel(TenantInfoMessage msg)
     {
@@ -1103,6 +1161,7 @@ public class TenantViewModel
         DisplayName     = msg.DisplayName;
         AdminEmail      = msg.AdminEmail;
         OnlineNodeCount = msg.OnlineNodeCount;
+        TotalNodeCount  = msg.TotalNodeCount;
         MaxHosts        = msg.MaxHosts;
         IsActive        = msg.IsActive;
         LicenseKey      = msg.LicenseKey;
@@ -1112,20 +1171,39 @@ public class TenantViewModel
 }
 
 /// <summary>
-/// Wraps HostInfoMessage with UI state (IsConnected) for the node list.
+/// Wraps HostInfoMessage with reactive UI state (Connected, Disconnected, Online, Offline) for the node list.
 /// </summary>
 public sealed class NodeViewModel : System.ComponentModel.INotifyPropertyChanged
 {
     private readonly HostInfoMessage _info;
+    private bool _isOnline;
     private bool _isConnected;
+    private bool _wasSessionDisconnected;
+    private DateTime _lastSeen;
 
-    public NodeViewModel(HostInfoMessage info) => _info = info;
+    public NodeViewModel(HostInfoMessage info)
+    {
+        _info       = info;
+        _isOnline   = info.IsOnline;
+        _lastSeen   = info.LastSeen;
+    }
 
-    public string MachineId  => _info.MachineId;
+    public string MachineId   => _info.MachineId;
     public string MachineName => _info.MachineName;
-    public string OsVersion  => _info.OsVersion;
-    public string ShortId    => _info.ShortId;
-    public string TenantId   => _info.TenantId;
+    public string OsVersion   => string.IsNullOrWhiteSpace(_info.OsVersion) ? "Windows Host" : _info.OsVersion;
+    public string ShortId     => _info.ShortId;
+    public string TenantId    => _info.TenantId;
+
+    public bool IsOnline
+    {
+        get => _isOnline;
+        set
+        {
+            if (_isOnline == value) return;
+            _isOnline = value;
+            NotifyStatusChanged();
+        }
+    }
 
     public bool IsConnected
     {
@@ -1134,15 +1212,68 @@ public sealed class NodeViewModel : System.ComponentModel.INotifyPropertyChanged
         {
             if (_isConnected == value) return;
             _isConnected = value;
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsConnected)));
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(StatusColor)));
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(StatusTooltip)));
+            NotifyStatusChanged();
         }
     }
 
-    /// <summary>Green = online/available, Blue = active session.</summary>
-    public string StatusColor   => IsConnected ? "#89b4fa" : "#a6e3a1";
-    public string StatusTooltip => IsConnected ? "Connected (active session)" : "Online";
+    public bool WasSessionDisconnected
+    {
+        get => _wasSessionDisconnected;
+        set
+        {
+            if (_wasSessionDisconnected == value) return;
+            _wasSessionDisconnected = value;
+            NotifyStatusChanged();
+        }
+    }
+
+    public DateTime LastSeen
+    {
+        get => _lastSeen;
+        set
+        {
+            if (_lastSeen == value) return;
+            _lastSeen = value;
+            OnPropertyChanged(nameof(LastSeen));
+            OnPropertyChanged(nameof(LastSeenText));
+        }
+    }
+
+    public string StatusLabel =>
+        !_isOnline               ? "Offline" :
+        _isConnected             ? "Connected" :
+        _wasSessionDisconnected  ? "Disconnected" :
+                                   "Online";
+
+    /// <summary>Blue = Connected (in session), Amber = Disconnected (session ended), Green = Online, Red/Muted = Offline.</summary>
+    public string StatusColor =>
+        !_isOnline               ? "#f38ba8" :
+        _isConnected             ? "#89b4fa" :
+        _wasSessionDisconnected  ? "#f9e2af" :
+                                   "#a6e3a1";
+
+    public string StatusTooltip => StatusLabel;
+    public double CardOpacity   => _isOnline ? 1.0 : 0.65;
+
+    public string LastSeenText =>
+        _isOnline || _lastSeen == default
+            ? ""
+            : $"  •  Last seen {_lastSeen.ToLocalTime():MMM d, HH:mm}";
+
+    private void NotifyStatusChanged()
+    {
+        OnPropertyChanged(nameof(IsOnline));
+        OnPropertyChanged(nameof(IsConnected));
+        OnPropertyChanged(nameof(WasSessionDisconnected));
+        OnPropertyChanged(nameof(StatusLabel));
+        OnPropertyChanged(nameof(StatusColor));
+        OnPropertyChanged(nameof(StatusTooltip));
+        OnPropertyChanged(nameof(CardOpacity));
+        OnPropertyChanged(nameof(LastSeenText));
+    }
+
+    private void OnPropertyChanged(string name) =>
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }

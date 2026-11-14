@@ -135,9 +135,10 @@ public sealed class ConnectionHub
             // Register new machine in DB
             db.RegisteredHosts.Add(new RegisteredHost
             {
-                TenantId   = tenant.TenantId,
-                MachineId  = register.MachineId,
+                TenantId    = tenant.TenantId,
+                MachineId   = register.MachineId,
                 MachineName = register.MachineName,
+                OsVersion   = register.OsVersion,
                 FirstSeenAt = DateTime.UtcNow,
                 LastSeenAt  = DateTime.UtcNow,
                 IsAllowed   = true
@@ -157,9 +158,11 @@ public sealed class ConnectionHub
                 return;
             }
 
-            // Update last seen
+            // Update last seen & OS version
             knownHost.LastSeenAt  = DateTime.UtcNow;
             knownHost.MachineName = register.MachineName; // name may change if user renamed PC
+            if (!string.IsNullOrWhiteSpace(register.OsVersion))
+                knownHost.OsVersion = register.OsVersion;
             await db.SaveChangesAsync(ct);
         }
 
@@ -491,15 +494,7 @@ public sealed class ConnectionHub
 
     private async Task SendHostListAsync(ConnectedAdmin admin, CancellationToken ct)
     {
-        HostInfoMessage[] hosts;
-
-        if (admin.IsSuperAdmin)
-        {
-            hosts = _tenantHosts
-                .SelectMany(kv => kv.Value.Values.Select(h => ToHostInfo(h)))
-                .ToArray();
-        }
-        else
+        if (!admin.IsSuperAdmin)
         {
             var allTenants = await _tenantStore.GetAllAsync();
             var tenant = allTenants.FirstOrDefault(t => t.TenantId == admin.TenantId);
@@ -508,11 +503,52 @@ public sealed class ConnectionHub
                 await DisconnectTenantAdminAsync(admin.TenantId, ct);
                 return;
             }
-
-            hosts = _tenantHosts.TryGetValue(admin.TenantId, out var pool)
-                ? pool.Values.Select(h => ToHostInfo(h)).ToArray()
-                : Array.Empty<HostInfoMessage>();
         }
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var query = db.RegisteredHosts.AsNoTracking().Where(h => h.IsAllowed);
+        if (!admin.IsSuperAdmin)
+            query = query.Where(h => h.TenantId == admin.TenantId);
+
+        var registered = await query.ToListAsync(ct);
+        var merged     = new Dictionary<(string TenantId, string MachineId), HostInfoMessage>();
+
+        foreach (var reg in registered)
+        {
+            ConnectedHost? live = null;
+            if (_tenantHosts.TryGetValue(reg.TenantId, out var pool))
+                pool.TryGetValue(reg.MachineId, out live);
+
+            bool isOnline = live is not null && live.WebSocket.State == WebSocketState.Open;
+            merged[(reg.TenantId, reg.MachineId)] = new HostInfoMessage(
+                reg.MachineId,
+                live?.MachineName ?? reg.MachineName,
+                !string.IsNullOrWhiteSpace(live?.OsVersion) ? live!.OsVersion : reg.OsVersion,
+                isOnline,
+                isOnline ? live!.LastHeartbeat : reg.LastSeenAt,
+                reg.TenantId
+            );
+        }
+
+        // Also include any live hosts that may not have flushed to RegisteredHosts yet
+        var livePools = admin.IsSuperAdmin
+            ? _tenantHosts.ToArray()
+            : (_tenantHosts.TryGetValue(admin.TenantId, out var singlePool)
+                ? [new KeyValuePair<string, ConcurrentDictionary<string, ConnectedHost>>(admin.TenantId, singlePool)]
+                : Array.Empty<KeyValuePair<string, ConcurrentDictionary<string, ConnectedHost>>>());
+
+        foreach (var (tId, pool) in livePools)
+        {
+            foreach (var h in pool.Values)
+            {
+                merged[(tId, h.MachineId)] = ToHostInfo(h);
+            }
+        }
+
+        var hosts = merged.Values
+            .OrderByDescending(h => h.IsOnline)
+            .ThenByDescending(h => h.LastSeen)
+            .ToArray();
 
         var list = new HostListMessage(hosts);
         await MessageFraming.WriteFrameAsync(admin.Stream, MessageType.HostList,
@@ -531,13 +567,21 @@ public sealed class ConnectionHub
     private async Task SendTenantListAsync(ConnectedAdmin admin, CancellationToken ct)
     {
         var tenants = await _tenantStore.GetAllAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var hostCounts = await db.RegisteredHosts
+            .AsNoTracking()
+            .Where(h => h.IsAllowed)
+            .GroupBy(h => h.TenantId)
+            .Select(g => new { TenantId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.TenantId, x => x.Count, ct);
 
         var infos = tenants.Select(t =>
         {
             var onlineCount = _tenantHosts.TryGetValue(t.TenantId, out var pool) ? pool.Count : 0;
+            var totalCount  = Math.Max(onlineCount, hostCounts.GetValueOrDefault(t.TenantId, 0));
             return new TenantInfoMessage(
                 t.TenantId, t.DisplayName, t.AdminEmail,
-                onlineCount, onlineCount,
+                onlineCount, totalCount,
                 t.IsActive, t.CreatedAt,
                 t.LicenseKey, t.AdminToken, t.HostToken, t.MaxHosts);
         }).ToArray();

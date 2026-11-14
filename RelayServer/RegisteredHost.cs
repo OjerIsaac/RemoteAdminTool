@@ -35,6 +35,10 @@ public sealed class RegisteredHost
     [MaxLength(256)]
     public string MachineName { get; set; } = string.Empty;
 
+    /// <summary>Last reported operating system version string.</summary>
+    [MaxLength(128)]
+    public string OsVersion { get; set; } = string.Empty;
+
     public DateTime FirstSeenAt { get; set; } = DateTime.UtcNow;
 
     public DateTime LastSeenAt { get; set; } = DateTime.UtcNow;
