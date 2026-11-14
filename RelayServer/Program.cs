@@ -161,8 +161,14 @@ app.MapGet("/api/version", async (HttpContext context) =>
     if (string.IsNullOrEmpty(providedToken))
         return Results.Unauthorized();
 
-    var isAuthorized = providedToken == globalToken
-        || providedToken == superAdminToken
+    static bool FixedMatch(string a, string b) =>
+        !string.IsNullOrEmpty(a) && !string.IsNullOrEmpty(b) &&
+        System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(a),
+            System.Text.Encoding.UTF8.GetBytes(b));
+
+    var isAuthorized = FixedMatch(providedToken, globalToken)
+        || FixedMatch(providedToken, superAdminToken)
         || (await tenantStore.GetByHostTokenAsync(providedToken)) is not null
         || (await tenantStore.GetByAdminTokenAsync(providedToken)) is not null;
 

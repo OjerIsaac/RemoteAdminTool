@@ -264,6 +264,8 @@ public partial class MainWindow : Window
         });
     }
 
+    private int _pendingCreatedMaxHosts = 25;
+
     private void OnTenantCreated(object? sender, CreateTenantAckMessage ack)
     {
         Dispatcher.Invoke(() =>
@@ -273,7 +275,7 @@ public partial class MainWindow : Window
                 MessageBox.Show($"Failed to create tenant: {ack.Error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-            TenantCredentialsDialog.ShowNewTenant(this, ack.TenantId!, ack.LicenseKey!, ack.AdminToken!, ack.HostToken ?? "");
+            TenantCredentialsDialog.ShowNewTenant(this, _client, ack.TenantId!, ack.LicenseKey!, ack.AdminToken!, ack.HostToken ?? "", _pendingCreatedMaxHosts);
             _ = _client?.RequestTenantListAsync();
         });
     }
@@ -283,7 +285,10 @@ public partial class MainWindow : Window
         if (_client is null || !_client.IsSuperAdmin) return;
         var dialog = new CreateTenantDialog();
         if (dialog.ShowDialog() == true)
-            await _client.CreateTenantAsync(dialog.DisplayName, dialog.AdminEmail);
+        {
+            _pendingCreatedMaxHosts = dialog.MaxHosts;
+            await _client.CreateTenantAsync(dialog.DisplayName, dialog.AdminEmail, dialog.MaxHosts);
+        }
     }
 
     private void TenantList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -315,7 +320,7 @@ public partial class MainWindow : Window
     private void ViewTenantDetails_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is TenantViewModel vm)
-            TenantCredentialsDialog.ShowExisting(this, vm.DisplayName, vm.TenantId, vm.LicenseKey, vm.AdminToken, vm.HostToken);
+            TenantCredentialsDialog.ShowExisting(this, _client, vm.DisplayName, vm.TenantId, vm.LicenseKey, vm.AdminToken, vm.HostToken, vm.MaxHosts);
     }
 
     // ---- Session events ----
@@ -1082,11 +1087,15 @@ public class TenantViewModel
     public string DisplayName     { get; }
     public string AdminEmail      { get; }
     public int    OnlineNodeCount { get; }
+    public int    MaxHosts        { get; }
     public bool   IsActive        { get; }
     public string LicenseKey      { get; }
     public string AdminToken      { get; }
     public string HostToken       { get; }
-    public string StatusLabel => IsActive ? "Active" : "Suspended";
+    public string StatusLabel  => IsActive ? "Active" : "Suspended";
+    public string NodesSummary => MaxHosts > 0
+        ? $"{OnlineNodeCount} / {MaxHosts} nodes  -  {AdminEmail}"
+        : $"{OnlineNodeCount} nodes (∞)  -  {AdminEmail}";
 
     public TenantViewModel(TenantInfoMessage msg)
     {
@@ -1094,6 +1103,7 @@ public class TenantViewModel
         DisplayName     = msg.DisplayName;
         AdminEmail      = msg.AdminEmail;
         OnlineNodeCount = msg.OnlineNodeCount;
+        MaxHosts        = msg.MaxHosts;
         IsActive        = msg.IsActive;
         LicenseKey      = msg.LicenseKey;
         AdminToken      = msg.AdminToken;

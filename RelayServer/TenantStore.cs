@@ -163,7 +163,7 @@ public sealed class TenantStore
     /// Create a new sub-admin tenant. Generates unique LicenseKey and AdminToken automatically.
     /// Returns the created Tenant (with generated keys) or null if display name is blank.
     /// </summary>
-    public async Task<Tenant> CreateTenantAsync(string displayName, string adminEmail)
+    public async Task<Tenant> CreateTenantAsync(string displayName, string adminEmail, int maxHosts = 0)
     {
         var tenant = new Tenant
         {
@@ -173,6 +173,7 @@ public sealed class TenantStore
             LicenseKey     = GenerateToken(24),
             AdminToken     = GenerateToken(24),
             HostToken      = GenerateToken(24),   // per-tenant - unique to this Host.exe build
+            MaxHosts       = Math.Max(0, maxHosts),
             IsActive       = true,
             CreatedAt      = DateTime.UtcNow
         };
@@ -220,6 +221,62 @@ public sealed class TenantStore
             _lock.Release();
         }
 
+        return true;
+    }
+
+    /// <summary>
+    /// Rotates a sub-admin's AdminToken (invalidating their old Viewer login token immediately)
+    /// while leaving their HostToken and LicenseKey untouched so deployed Hosts stay online.
+    /// </summary>
+    public async Task<string?> RotateAdminTokenAsync(string tenantId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var tenant = await db.Tenants.FindAsync(tenantId);
+        if (tenant is null) return null;
+
+        var newToken = GenerateToken(24);
+        tenant.AdminToken = newToken;
+        await db.SaveChangesAsync();
+
+        await _lock.WaitAsync();
+        try
+        {
+            var all = await db.Tenants.ToListAsync();
+            RefreshCache(all);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+
+        Console.WriteLine($"[TenantStore] Rotated AdminToken for tenant: {tenant.DisplayName} ({tenantId})");
+        return newToken;
+    }
+
+    /// <summary>
+    /// Updates the MaxHosts seat limit for a sub-admin tenant (0 = unlimited).
+    /// </summary>
+    public async Task<bool> UpdateMaxHostsAsync(string tenantId, int maxHosts)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var tenant = await db.Tenants.FindAsync(tenantId);
+        if (tenant is null) return false;
+
+        tenant.MaxHosts = Math.Max(0, maxHosts);
+        await db.SaveChangesAsync();
+
+        await _lock.WaitAsync();
+        try
+        {
+            var all = await db.Tenants.ToListAsync();
+            RefreshCache(all);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+
+        Console.WriteLine($"[TenantStore] Updated MaxHosts={tenant.MaxHosts} for tenant: {tenant.DisplayName} ({tenantId})");
         return true;
     }
 

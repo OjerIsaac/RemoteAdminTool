@@ -112,12 +112,28 @@ public sealed class ViewerClient : IAsyncDisposable
     }
 
     /// <summary>Create a new sub-admin tenant. Only works when IsSuperAdmin = true.</summary>
-    public async Task CreateTenantAsync(string displayName, string adminEmail)
+    public async Task CreateTenantAsync(string displayName, string adminEmail, int maxHosts = 0)
     {
         if (_stream is null || !IsSuperAdmin) return;
-        var msg = new CreateTenantMessage(displayName, adminEmail);
+        var msg = new CreateTenantMessage(displayName, adminEmail, maxHosts);
         await MessageFraming.WriteFrameAsync(_stream, MessageType.CreateTenant,
             JsonSerializer.SerializeToUtf8Bytes(msg));
+    }
+
+    /// <summary>Rotate a sub-admin's AdminToken and immediately kick any active Viewer session using the old token.</summary>
+    public async Task RotateAdminTokenAsync(string tenantId)
+    {
+        if (_stream is null || !IsSuperAdmin) return;
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.RotateAdminToken,
+            JsonSerializer.SerializeToUtf8Bytes(new RotateAdminTokenMessage(tenantId)));
+    }
+
+    /// <summary>Update a sub-admin's MaxHosts seat limit (0 = unlimited).</summary>
+    public async Task UpdateTenantMaxHostsAsync(string tenantId, int maxHosts)
+    {
+        if (_stream is null || !IsSuperAdmin) return;
+        await MessageFraming.WriteFrameAsync(_stream, MessageType.UpdateTenantMaxHosts,
+            JsonSerializer.SerializeToUtf8Bytes(new UpdateTenantMaxHostsMessage(tenantId, maxHosts)));
     }
 
     /// <summary>Suspend a tenant (their hosts will be rejected). Super admin only.</summary>

@@ -328,11 +328,8 @@
                                         <StackPanel>
                                             <TextBlock Text="{Binding DisplayName}" FontSize="13"
                                                        FontWeight="SemiBold" Foreground="#cdd6f4"/>
-                                            <TextBlock FontSize="10" Foreground="#6c7086" Margin="0,2,0,0">
-                                                <Run Text="{Binding OnlineNodeCount, Mode=OneWay}"/>
-                                                <Run Text=" nodes  -  "/>
-                                                <Run Text="{Binding AdminEmail, Mode=OneWay}"/>
-                                            </TextBlock>
+                                            <TextBlock FontSize="10" Foreground="#6c7086" Margin="0,2,0,0"
+                                                       Text="{Binding NodesSummary, Mode=OneWay}"/>
                                             <TextBlock FontSize="9" Margin="0,2,0,0"
                                                        Text="{Binding StatusLabel, Mode=OneWay}">
                                                 <TextBlock.Style>

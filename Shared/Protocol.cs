@@ -48,6 +48,8 @@ public enum MessageType : byte
     CreateTenantAck = 73,       // Relay -> SuperAdmin: tenant created / failed
     SuspendTenant = 74,         // SuperAdmin -> Relay: suspend a tenant (no new host connections)
     ResumeTenant = 75,          // SuperAdmin -> Relay: re-activate a suspended tenant
+    RotateAdminToken = 76,      // SuperAdmin -> Relay: rotate a tenant's AdminToken and kick old sessions
+    UpdateTenantMaxHosts = 77,  // SuperAdmin -> Relay: update a tenant's MaxHosts seat limit
 
     // ---- Remote Console (PowerShell) ----
     ShellInput  = 80,           // Viewer -> Host: a line of text to send to the shell's stdin
@@ -256,7 +258,8 @@ public readonly record struct TenantInfoMessage(
     DateTime CreatedAt,
     string LicenseKey,   // shown in super admin detail view; also needed for BuildHostForSubAdmin.bat
     string AdminToken,   // shown in super admin detail view
-    string HostToken     // per-tenant; baked into Host.exe - also shown in detail view
+    string HostToken,    // per-tenant; baked into Host.exe - also shown in detail view
+    int MaxHosts = 0     // 0 = unlimited, >0 = maximum allowed registered hosts for this tenant
 );
 
 public readonly record struct TenantListMessage(
@@ -269,7 +272,8 @@ public readonly record struct TenantListMessage(
 /// </summary>
 public readonly record struct CreateTenantMessage(
     string DisplayName,
-    string AdminEmail
+    string AdminEmail,
+    int MaxHosts = 0
 );
 
 public readonly record struct CreateTenantAckMessage(
@@ -283,6 +287,8 @@ public readonly record struct CreateTenantAckMessage(
 
 public readonly record struct SuspendTenantMessage(string TenantId);
 public readonly record struct ResumeTenantMessage(string TenantId);
+public readonly record struct RotateAdminTokenMessage(string TenantId);
+public readonly record struct UpdateTenantMaxHostsMessage(string TenantId, int MaxHosts);
 
 // ---- Remote Console messages ----
 

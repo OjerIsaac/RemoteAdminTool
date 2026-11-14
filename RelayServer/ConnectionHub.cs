@@ -93,8 +93,8 @@ public sealed class ConnectionHub
             return;
         }
 
-        // 2. Validate host auth token
-        if (register.AuthToken != GetHostTokenForTenant(tenant))
+        // 2. Validate host auth token (constant-time comparison against timing attacks)
+        if (!FixedEquals(register.AuthToken, GetHostTokenForTenant(tenant)))
         {
             rateLimiter.RecordFailure(ip);
             var reject = new HostRegisterAckMessage(false, "Invalid host auth token");
@@ -260,8 +260,8 @@ public sealed class ConnectionHub
     {
         var auth = JsonSerializer.Deserialize<AdminAuthMessage>(payload);
 
-        // Determine if this is the super admin or a sub-admin
-        bool isSuperAdmin = auth.AuthToken == _superAdminToken;
+        // Determine if this is the super admin or a sub-admin (constant-time comparison)
+        bool isSuperAdmin = FixedEquals(auth.AuthToken, _superAdminToken);
         Tenant? tenant = null;
 
         if (!isSuperAdmin)
@@ -370,6 +370,19 @@ public sealed class ConnectionHub
                     var resume = JsonSerializer.Deserialize<ResumeTenantMessage>(payload);
                     await _tenantStore.SetActiveAsync(resume.TenantId, true);
                     Console.WriteLine($"[Hub] Tenant resumed: {resume.TenantId}");
+                    break;
+
+                case MessageType.RotateAdminToken when admin.IsSuperAdmin:
+                    var rotate = JsonSerializer.Deserialize<RotateAdminTokenMessage>(payload);
+                    await _tenantStore.RotateAdminTokenAsync(rotate.TenantId);
+                    await DisconnectTenantAdminAsync(rotate.TenantId, ct);
+                    await SendTenantListAsync(admin, ct);
+                    break;
+
+                case MessageType.UpdateTenantMaxHosts when admin.IsSuperAdmin:
+                    var updateLimit = JsonSerializer.Deserialize<UpdateTenantMaxHostsMessage>(payload);
+                    await _tenantStore.UpdateMaxHostsAsync(updateLimit.TenantId, updateLimit.MaxHosts);
+                    await SendTenantListAsync(admin, ct);
                     break;
 
                 default:
@@ -526,7 +539,7 @@ public sealed class ConnectionHub
                 t.TenantId, t.DisplayName, t.AdminEmail,
                 onlineCount, onlineCount,
                 t.IsActive, t.CreatedAt,
-                t.LicenseKey, t.AdminToken, t.HostToken);
+                t.LicenseKey, t.AdminToken, t.HostToken, t.MaxHosts);
         }).ToArray();
 
         var msg = new TenantListMessage(infos);
@@ -538,7 +551,7 @@ public sealed class ConnectionHub
     {
         try
         {
-            var tenant = await _tenantStore.CreateTenantAsync(req.DisplayName, req.AdminEmail);
+            var tenant = await _tenantStore.CreateTenantAsync(req.DisplayName, req.AdminEmail, req.MaxHosts);
             var ack = new CreateTenantAckMessage(
                 true, null,
                 tenant.TenantId, tenant.LicenseKey, tenant.AdminToken, tenant.HostToken);
@@ -593,6 +606,14 @@ public sealed class ConnectionHub
             try { await MessageFraming.WriteFrameAsync(superAdmin.Stream, type, payload, ct); }
             catch { /* best effort */ }
         }
+    }
+
+    private static bool FixedEquals(string? a, string? b)
+    {
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+        var bytesA = System.Text.Encoding.UTF8.GetBytes(a);
+        var bytesB = System.Text.Encoding.UTF8.GetBytes(b);
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(bytesA, bytesB);
     }
 }
 
