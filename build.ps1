@@ -220,6 +220,7 @@ if ($PublishViewer -or $PublishAll) {
 
     & dotnet publish "$root\Viewer\Viewer.csproj" -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:DebugSymbols=false `
         -o $distViewer 2>&1 | Where-Object { $_ -match "error|warning|published" }
     if ($LASTEXITCODE -eq 0) {
         Get-ChildItem $distViewer -Exclude "Viewer.exe" | Remove-Item -Force
@@ -254,6 +255,7 @@ if ($PublishHostForTenant) {
         Set-HostConstants $licenseHash $effectiveHostToken
         & dotnet publish "$root\Host\Host.csproj" -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:DebugSymbols=false `
             -o $distTenantHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
         $pubExit = $LASTEXITCODE
     }
@@ -340,6 +342,7 @@ if ($PublishHostDev) {
             Set-HostConstants $devKeyHash $devToken
             & dotnet publish "$root\Host\Host.csproj" -c Release -r win-x64 --self-contained true `
                 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+                -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:DebugSymbols=false `
                 -o $distDevHost 2>&1 | Where-Object { $_ -match "error|warning|published" }
             $devPubExit = $LASTEXITCODE
         }

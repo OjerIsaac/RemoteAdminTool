@@ -2,5 +2,7 @@
   <PropertyGroup>
     <!-- Disable online NuGet package vulnerability audit during local/offline builds -->
     <NuGetAudit>false</NuGetAudit>
+    <!-- Exclude unused foreign-language satellite resource assemblies to reduce single-file EXE size -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 </Project>
