@@ -115,11 +115,31 @@ static void EnsureStartupRegistration()
         var exePath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exePath)) return;
 
+        var quotedPath = $"\"{exePath}\"";
+
+        // 1. Register a Windows Scheduled Task with /RL HIGHEST so an elevated Host.exe
+        //    auto-starts silently with full Administrator rights on every PC reboot/logon.
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var principal = new System.Security.Principal.WindowsPrincipal(identity);
+        if (principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator))
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName        = "schtasks.exe",
+                Arguments       = $"/Create /TN \"RemoteAdminHost\" /TR \"{quotedPath}\" /SC ONLOGON /RL HIGHEST /F",
+                CreateNoWindow  = true,
+                UseShellExecute = false,
+                WindowStyle     = System.Diagnostics.ProcessWindowStyle.Hidden
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            proc?.WaitForExit(5000);
+        }
+
+        // 2. Also keep HKCU Run fallback
         using var runKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
             @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
         if (runKey is null) return;
 
-        var quotedPath = $"\"{exePath}\"";
         var existing = runKey.GetValue("RemoteAdminHost") as string;
         if (!string.Equals(existing, quotedPath, StringComparison.OrdinalIgnoreCase))
         {
@@ -129,7 +149,7 @@ static void EnsureStartupRegistration()
     }
     catch (Exception ex)
     {
-        Log.Warning("Could not register auto-start in HKCU Run: {Message}", ex.Message);
+        Log.Warning("Could not register auto-start on boot: {Message}", ex.Message);
     }
 }
 
