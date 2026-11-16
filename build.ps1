@@ -25,6 +25,7 @@
 param(
     [string]$PublishHostForTenant = "",   # LicenseKey for a specific sub-admin
     [string]$HostToken            = "",   # Per-tenant HostToken (from Viewer Details dialog)
+    [string]$AdminToken           = "",   # Sub-admin's AdminToken (for their Viewer login in README_FOR_SUBADMIN.txt)
     [string]$TenantName           = "",   # Optional display name (e.g. AcmeCorp) for folder naming
     [switch]$PublishViewer,
     [switch]$PublishHostDev,              # Rebuild Host.exe only - keeps existing host.key/host.token
@@ -282,26 +283,21 @@ if ($PublishHostForTenant) {
         $hostExe  = Join-Path $distTenantHost "Host.exe"
         $hostHash = Get-FileSha256 $hostExe
 
-        # Create a ready-to-share .zip containing ONLY the standalone EXE(s) (Host.exe + Viewer.exe)
-        $prevProgress = $ProgressPreference
-        $ProgressPreference = 'SilentlyContinue'
-        $zipBase = if ($TenantName) { ($TenantName -replace '[^a-zA-Z0-9_\-]', '') + "_Host_Package.zip" } else { "subadmin_${tenantPrefix}_Host_Package.zip" }
-        $zipPath = Join-Path $distTenantHost $zipBase
-        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-        $exeFilesToZip = Get-ChildItem $distTenantHost -Filter "*.exe" | Select-Object -ExpandProperty FullName
-        Compress-Archive -Path $exeFilesToZip -DestinationPath $zipPath -Force
-        $ProgressPreference = $prevProgress
-
         $displayNameLine = if ($TenantName) { "Tenant / Client:    $TenantName`n" } else { "" }
         $subAdminReadme = @"
 RemoteAdminTool - Standalone Sub-Admin Package
 Generated:          $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 $displayNameLine
+Admin Token:        $AdminToken
 Tenant License Key: $PublishHostForTenant
-Host Auth Token:    $effectiveHostToken
-Host EXE SHA-256:   $hostHash
 
-HOW IT WORKS (SINGLE-FILE EXE):
+HOW TO LOG INTO VIEWER.EXE:
+1. Open Viewer.exe
+2. Paste your Admin Token into the "Admin Token" field.
+3. Paste your Tenant License Key into the "License Key (Sub-Admin)" field.
+4. Click "Connect to Relay".
+
+HOW IT WORKS (SINGLE-FILE HOST.EXE):
 - Host.exe is 100% standalone (your tenant credentials are compiled inside Host.exe).
 - No host.key, host.token, or appsettings.json files are needed!
 - You can deploy Host.exe (or rename it) on as many host PCs as your plan allows.
@@ -314,13 +310,13 @@ HOW IT WORKS (SINGLE-FILE EXE):
         if ($latestViewer) {
             Write-Host "  Viewer.exe   -> $distTenantHost\Viewer.exe (copied into package)" -ForegroundColor Green
         }
-        Write-Host "  ZIP Package  -> $zipPath (contains ONLY the standalone EXE files)" -ForegroundColor Cyan
+        Write-Host "  README       -> $distTenantHost\README_FOR_SUBADMIN.txt" -ForegroundColor Green
         Write-Host ""
         Write-Host "  SHA-256 (paste into Render env var HOST_EXE_SHA256 if releasing an update):" -ForegroundColor Yellow
         Write-Host "  $hostHash" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "  Ready to send to sub-admin:" -ForegroundColor Yellow
-        Write-Host "    $zipPath" -ForegroundColor White
+        Write-Host "  Ready to send to sub-admin (folder):" -ForegroundColor Yellow
+        Write-Host "    $distTenantHost" -ForegroundColor White
     }
 }
 
