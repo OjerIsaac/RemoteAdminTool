@@ -4,15 +4,8 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using RemoteAdminTool.Host;
 
-// ---- Serilog structured logging (file only - no console window in WinExe) ----
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .WriteTo.File(
-        Path.Combine(AppContext.BaseDirectory, "logs", "host-.log"),
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 14,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .CreateLogger();
+// ---- No-op logger (file logging disabled so no logs/ folder is created on disk) ----
+Log.Logger = new LoggerConfiguration().CreateLogger();
 
 try
 {
