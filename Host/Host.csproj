@@ -8,6 +8,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <!-- UseWindowsForms pulls in System.Drawing + a simple tray icon for visible-running-indicator -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Low-memory GC tuning for 2 GB RAM VMs (Workstation GC + .NET 8 DATAS heap adaptation) -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
   </PropertyGroup>
 
   <ItemGroup>

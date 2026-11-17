@@ -10,7 +10,13 @@ namespace RemoteAdminTool.Host;
 /// </summary>
 public sealed class ScreenCapture : IScreenCapture
 {
+    private static readonly ImageCodecInfo _jpegEncoder =
+        ImageCodecInfo.GetImageEncoders().First(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
+
     private int _selectedMonitor = -1; // -1 = primary
+    private Bitmap? _reusableBitmap;
+    private readonly MemoryStream _reusableStream = new(256 * 1024);
+    private readonly object _syncLock = new();
 
     public (int Width, int Height) GetScreenSize()
     {
@@ -45,22 +51,32 @@ public sealed class ScreenCapture : IScreenCapture
 
     public byte[] CaptureFrameAsJpeg(long quality = 70)
     {
-        var screen = GetSelectedScreen();
-        var bounds = screen.Bounds;
-
-        using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(bitmap))
+        lock (_syncLock)
         {
-            g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+            var screen = GetSelectedScreen();
+            var bounds = screen.Bounds;
+
+            if (_reusableBitmap is null || _reusableBitmap.Width != bounds.Width || _reusableBitmap.Height != bounds.Height)
+            {
+                _reusableBitmap?.Dispose();
+                _reusableBitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format24bppRgb);
+            }
+
+            using (var g = Graphics.FromImage(_reusableBitmap))
+            {
+                g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+            }
+
+            _reusableStream.Position = 0;
+            _reusableStream.SetLength(0);
+
+            using var encoderParams = new EncoderParameters(1);
+            using var qualityParam  = new EncoderParameter(Encoder.Quality, quality);
+            encoderParams.Param[0]  = qualityParam;
+
+            _reusableBitmap.Save(_reusableStream, _jpegEncoder, encoderParams);
+            return _reusableStream.ToArray();
         }
-
-        using var ms = new MemoryStream();
-        var jpegEncoder = GetJpegEncoder();
-        var encoderParams = new EncoderParameters(1);
-        encoderParams.Param[0] = new EncoderParameter(Encoder.Quality, quality);
-
-        bitmap.Save(ms, jpegEncoder, encoderParams);
-        return ms.ToArray();
     }
 
     private System.Windows.Forms.Screen GetSelectedScreen()
@@ -73,14 +89,13 @@ public sealed class ScreenCapture : IScreenCapture
         return System.Windows.Forms.Screen.PrimaryScreen!;
     }
 
-    private static ImageCodecInfo GetJpegEncoder()
-    {
-        return ImageCodecInfo.GetImageEncoders()
-            .First(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
-    }
-
     public void Dispose()
     {
-        // GDI capture has no persistent resources to clean up
+        lock (_syncLock)
+        {
+            _reusableBitmap?.Dispose();
+            _reusableBitmap = null;
+            _reusableStream.Dispose();
+        }
     }
 }

@@ -18,9 +18,14 @@ namespace RemoteAdminTool.Host;
 /// </summary>
 public sealed class DxgiScreenCapture : IScreenCapture
 {
+    private static readonly ImageCodecInfo _jpegEncoder =
+        ImageCodecInfo.GetImageEncoders().First(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
+
     private Device? _device;
     private OutputDuplication? _duplication;
     private Texture2D? _stagingTexture;
+    private Bitmap? _reusableBitmap;
+    private readonly MemoryStream _reusableStream = new(256 * 1024);
     private int _width;
     private int _height;
     private int _selectedMonitor;
@@ -111,8 +116,13 @@ public sealed class DxgiScreenCapture : IScreenCapture
 
                 try
                 {
-                    using var bitmap = new Bitmap(_width, _height, PixelFormat.Format32bppArgb);
-                    var bitmapData = bitmap.LockBits(
+                    if (_reusableBitmap is null || _reusableBitmap.Width != _width || _reusableBitmap.Height != _height)
+                    {
+                        _reusableBitmap?.Dispose();
+                        _reusableBitmap = new Bitmap(_width, _height, PixelFormat.Format32bppArgb);
+                    }
+
+                    var bitmapData = _reusableBitmap.LockBits(
                         new Rectangle(0, 0, _width, _height),
                         ImageLockMode.WriteOnly,
                         PixelFormat.Format32bppArgb);
@@ -126,14 +136,16 @@ public sealed class DxgiScreenCapture : IScreenCapture
                             _width * 4);
                     }
 
-                    bitmap.UnlockBits(bitmapData);
+                    _reusableBitmap.UnlockBits(bitmapData);
 
-                    using var ms = new MemoryStream();
-                    var jpegEncoder = GetJpegEncoder();
-                    var encoderParams = new EncoderParameters(1);
-                    encoderParams.Param[0] = new EncoderParameter(Encoder.Quality, quality);
-                    bitmap.Save(ms, jpegEncoder, encoderParams);
-                    return ms.ToArray();
+                    _reusableStream.Position = 0;
+                    _reusableStream.SetLength(0);
+
+                    using var encoderParams = new EncoderParameters(1);
+                    using var qualityParam  = new EncoderParameter(Encoder.Quality, quality);
+                    encoderParams.Param[0]  = qualityParam;
+                    _reusableBitmap.Save(_reusableStream, _jpegEncoder, encoderParams);
+                    return _reusableStream.ToArray();
                 }
                 finally
                 {
@@ -201,6 +213,8 @@ public sealed class DxgiScreenCapture : IScreenCapture
 
     private void Cleanup()
     {
+        _reusableBitmap?.Dispose();
+        _reusableBitmap = null;
         _duplication?.Dispose();
         _duplication = null;
         _stagingTexture?.Dispose();

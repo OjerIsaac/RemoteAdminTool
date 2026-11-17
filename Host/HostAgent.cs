@@ -180,6 +180,7 @@ public sealed class HostAgent
 
         ConnectionStateChanged?.Invoke(this, $"Registered as {_machineName}");
         Console.WriteLine($"[HostAgent] Registered with relay as {_machineName} ({_machineId})");
+        TrimWorkingSetMemory();
 
         // Idle loop - wait for sessions from the relay
         await IdleLoopAsync(ct);
@@ -270,6 +271,25 @@ public sealed class HostAgent
 
         try { await Task.WhenAll(sendTask, receiveTask); }
         catch { /* expected once cancelled */ }
+
+        TrimWorkingSetMemory();
+    }
+
+    [DllImport("psapi.dll")]
+    private static extern bool EmptyWorkingSet(IntPtr hProcess);
+
+    private static void TrimWorkingSetMemory()
+    {
+        try
+        {
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            EmptyWorkingSet(Process.GetCurrentProcess().Handle);
+        }
+        catch
+        {
+        }
     }
 
     private async Task SendMonitorListAsync(CancellationToken ct)
@@ -588,6 +608,7 @@ public sealed class HostAgent
                     if (monSelect.MonitorIndex == -99)
                     {
                         _streamScreenFrames = false;
+                        TrimWorkingSetMemory();
                     }
                     else
                     {
