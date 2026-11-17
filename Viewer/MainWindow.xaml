@@ -380,16 +380,13 @@
 
                     <!-- Session tab buttons -->
                     <StackPanel Orientation="Horizontal" Margin="16,0,0,0">
-                        <!-- [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
                         <Button x:Name="TabScreenBtn" Content="Screen"
                                 Click="TabScreenBtn_Click"
                                 Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"
                                 Background="#89b4fa" Foreground="#1e1e2e" FontWeight="SemiBold"/>
-                        -->
                         <Button x:Name="TabConsoleBtn" Content="Terminal"
                                 Click="TabConsoleBtn_Click"
-                                Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"
-                                Background="#89b4fa" Foreground="#1e1e2e" FontWeight="SemiBold"/>
+                                Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"/>
                         <Button x:Name="TabFilesBtn" Content="Files"
                                 Click="TabFilesBtn_Click"
                                 Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"/>
@@ -401,12 +398,10 @@
                                 Style="{StaticResource SidebarButton}" Padding="10,4" FontSize="11"/>
                     </StackPanel>
 
-                    <!-- [COMMENTED OUT FOR NOW - Monitor selector for Screen Tab]
                     <ComboBox x:Name="MonitorSelector" Style="{StaticResource DarkComboBox}"
                               Width="150" Margin="8,0"
                               SelectionChanged="MonitorSelector_SelectionChanged"
                               Visibility="Collapsed"/>
-                    -->
 
                     <!-- Right toolbar -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -450,7 +445,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- [COMMENTED OUT FOR NOW - TAB: Screen]
+            <!-- TAB: Screen -->
             <Grid x:Name="ScreenTab" Margin="0,38,0,0">
                 <Image x:Name="RemoteScreenImage"
                        Stretch="Uniform"
@@ -463,14 +458,13 @@
                        Focusable="True"
                        KeyDown="RemoteScreenImage_KeyDown"
                        KeyUp="RemoteScreenImage_KeyUp"/>
-                [Crosshair dot overlay - shown when cursor is hidden]
+                <!-- Crosshair dot overlay - shown when cursor is hidden -->
                 <Canvas x:Name="CursorOverlay" IsHitTestVisible="False">
                     <Ellipse x:Name="CursorDot" Width="10" Height="10"
                              Fill="#89b4fa" Opacity="0.85"
                              Visibility="Collapsed"/>
                 </Canvas>
             </Grid>
-            -->
 
             <!-- TAB: Terminal (improved - RichTextBox + history + Admin Mode) -->
             <DockPanel x:Name="ConsolePanel" Visibility="Collapsed" Margin="0,38,0,0"

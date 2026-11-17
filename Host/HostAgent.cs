@@ -435,30 +435,35 @@ public sealed class HostAgent
 
     private async Task FrameSendLoopAsync(CancellationToken ct)
     {
-        /* [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
         const int targetFps = 15;
         var frameInterval = TimeSpan.FromMilliseconds(1000.0 / targetFps);
-        */
         var heartbeatInterval = TimeSpan.FromSeconds(5);
         var lastHeartbeat = DateTime.UtcNow;
 
-        /* [COMMENTED OUT FOR NOW - Adaptive JPEG screen capture]
         // Adaptive quality: start at 60, reduce if frames take too long to send
         long jpegQuality = 60;
         const long minQuality = 20;
         const long maxQuality = 80;
-        */
+        bool sentFirstFrame = false;
+        using var gdiFallback = new ScreenCapture();
 
         while (!ct.IsCancellationRequested && _stream is not null)
         {
-            /* [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
             var sendStart = DateTime.UtcNow;
 
             var frameBytes = _capture.CaptureFrameAsJpeg(quality: jpegQuality);
 
+            // Guarantee an immediate initial frame when a session starts even if the desktop is stationary
+            if (!sentFirstFrame && frameBytes.Length == 0)
+            {
+                try { frameBytes = gdiFallback.CaptureFrameAsJpeg(quality: jpegQuality); }
+                catch { }
+            }
+
             // DXGI returns empty when screen hasn't changed - skip sending
             if (frameBytes.Length > 0)
             {
+                sentFirstFrame = true;
                 await MessageFraming.WriteFrameAsync(_stream, MessageType.FrameData, frameBytes, ct);
             }
 
@@ -474,7 +479,6 @@ public sealed class HostAgent
             {
                 jpegQuality = Math.Min(maxQuality, jpegQuality + 2);
             }
-            */
 
             // Send heartbeat every 5 seconds
             if (DateTime.UtcNow - lastHeartbeat > heartbeatInterval)
@@ -484,7 +488,13 @@ public sealed class HostAgent
                 lastHeartbeat = DateTime.UtcNow;
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            // Sleep for the remaining frame time
+            var elapsed = DateTime.UtcNow - sendStart;
+            var remaining = frameInterval - elapsed;
+            if (remaining > TimeSpan.Zero)
+            {
+                await Task.Delay(remaining, ct);
+            }
         }
     }
 

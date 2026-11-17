@@ -389,11 +389,9 @@ public partial class MainWindow : Window
             ConnectingOverlay.Visibility      = Visibility.Collapsed;
             SessionToolbar.Visibility         = Visibility.Visible;
             NoSessionPlaceholder.Visibility   = Visibility.Collapsed;
-            // [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
-            // RemoteScreenImage.Focus();
-            // SetSessionTab(0);
             _currentRemotePath = "\\";
-            TabConsoleBtn_Click(this, new RoutedEventArgs());
+            RemoteScreenImage.Focus();
+            SetSessionTab(0);
             // Mark the active node as connected
             foreach (var n in Nodes)
             {
@@ -413,7 +411,6 @@ public partial class MainWindow : Window
 
     private void OnFrameReceived(object? sender, byte[] jpegBytes)
     {
-        /* [COMMENTED OUT FOR NOW - Screen Tab hidden for headless server RMM]
         Dispatcher.Invoke(() =>
         {
             using var ms = new MemoryStream(jpegBytes);
@@ -430,7 +427,6 @@ public partial class MainWindow : Window
                 _remoteHeight = bitmap.PixelHeight;
             }
         });
-        */
     }
 
     // ---- Logout ----
@@ -453,7 +449,6 @@ public partial class MainWindow : Window
 
     private void OnMonitorListReceived(object? sender, MonitorInfoData[] monitors)
     {
-        /* [COMMENTED OUT FOR NOW - Monitor selector for Screen Tab]
         Dispatcher.Invoke(() =>
         {
             MonitorSelector.Items.Clear();
@@ -464,16 +459,13 @@ public partial class MainWindow : Window
             }
             if (MonitorSelector.Items.Count > 0) { MonitorSelector.SelectedIndex = 0; MonitorSelector.Visibility = Visibility.Visible; }
         });
-        */
     }
 
-    /* [COMMENTED OUT FOR NOW - Monitor selector for Screen Tab]
     private async void MonitorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_client is null || MonitorSelector.SelectedItem is not MonitorComboItem item) return;
         await _client.SelectMonitorAsync(item.Index);
     }
-    */
 
     // ---- Node list ----
 
@@ -517,18 +509,17 @@ public partial class MainWindow : Window
         _remoteWidth = 0;
         _remoteHeight = 0;
         SessionHostName.Text = "";
-        // [COMMENTED OUT FOR NOW - Screen Tab hidden]
-        // RemoteScreenImage.Source = null;
-        // CursorDot.Visibility = Visibility.Collapsed;
+        RemoteScreenImage.Source = null;
+        CursorDot.Visibility = Visibility.Collapsed;
 
         ConnectingOverlay.Visibility    = Visibility.Collapsed;
         SessionToolbar.Visibility       = Visibility.Collapsed;
         NoSessionPlaceholder.Visibility = Visibility.Visible;
 
-        // MonitorSelector.Visibility = Visibility.Collapsed;
-        // MonitorSelector.Items.Clear();
+        MonitorSelector.Visibility = Visibility.Collapsed;
+        MonitorSelector.Items.Clear();
 
-        // ScreenTab.Visibility    = Visibility.Collapsed;
+        ScreenTab.Visibility    = Visibility.Collapsed;
         ConsolePanel.Visibility = Visibility.Collapsed;
         FilesPanel.Visibility   = Visibility.Collapsed;
         DevicePanel.Visibility  = Visibility.Collapsed;
@@ -559,8 +550,8 @@ public partial class MainWindow : Window
         MonitorPanel.DataContext = _monitorViewModel;
         SilentModeCheckBox.IsChecked = false;
 
-        // Reset tab highlights to Terminal as default (TabScreenBtn commented out)
-        var buttons = new[] { /* TabScreenBtn, */ TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
+        // Reset tab highlights to Screen as default
+        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
         for (int i = 0; i < buttons.Length; i++)
         {
             buttons[i].Background = i == 0 ? ColorBrush("#89b4fa") : ColorBrush("Transparent");
@@ -580,8 +571,7 @@ public partial class MainWindow : Window
 
     // ---- Session tab switching ----
 
-    // [COMMENTED OUT FOR NOW - Screen Tab hidden]
-    // private void TabScreenBtn_Click(object sender, RoutedEventArgs e)  => SetSessionTab(0);
+    private void TabScreenBtn_Click(object sender, RoutedEventArgs e)  => SetSessionTab(0);
     private void TabConsoleBtn_Click(object sender, RoutedEventArgs e)
     {
         SetSessionTab(1);
@@ -611,8 +601,7 @@ public partial class MainWindow : Window
 
     private void SetSessionTab(int tab)
     {
-        // [COMMENTED OUT FOR NOW - Screen Tab hidden]
-        // ScreenTab.Visibility    = tab == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ScreenTab.Visibility    = tab == 0 ? Visibility.Visible : Visibility.Collapsed;
         ConsolePanel.Visibility = tab == 1 ? Visibility.Visible : Visibility.Collapsed;
         FilesPanel.Visibility   = tab == 2 ? Visibility.Visible : Visibility.Collapsed;
         DevicePanel.Visibility  = tab == 3 ? Visibility.Visible : Visibility.Collapsed;
@@ -621,11 +610,11 @@ public partial class MainWindow : Window
         // Stop stats when leaving monitor tab
         if (tab != 4) _ = _client?.SendStatsRequestAsync(false);
 
-        // Update tab button highlight (tabs 1..4 map to buttons 0..3 while TabScreenBtn is commented out)
-        var buttons = new[] { /* TabScreenBtn, */ TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
+        // Update tab button highlight
+        var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
         for (int i = 0; i < buttons.Length; i++)
         {
-            bool active = (i + 1) == tab;
+            bool active = i == tab;
             buttons[i].Background  = active ? ColorBrush("#89b4fa") : ColorBrush("Transparent");
             buttons[i].Foreground  = active ? ColorBrush("#1e1e2e") : ColorBrush("#cdd6f4");
             buttons[i].FontWeight  = active ? FontWeights.SemiBold : FontWeights.Normal;
@@ -1066,8 +1055,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // ---- Cursor hiding & Input forwarding on remote screen (COMMENTED OUT FOR NOW) ----
-    /*
+    // ---- Cursor hiding & Input forwarding on remote screen ----
     private void RemoteScreenImage_MouseEnter(object sender, MouseEventArgs e)
     {
         RemoteScreenImage.Cursor = Cursors.None;
@@ -1135,7 +1123,6 @@ public partial class MainWindow : Window
         if (_client is null || _activeSessionMachineId is null) return;
         await _client.SendKeyAsync(KeyInterop.VirtualKeyFromKey(e.Key), KeyAction.Up);
     }
-    */
 
     protected override async void OnClosed(EventArgs e)
     {
