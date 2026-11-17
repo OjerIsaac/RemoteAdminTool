@@ -14,6 +14,13 @@ if (args.Contains("--stop") || args.Contains("--uninstall"))
     return;
 }
 
+// ---- Standard Desktop Installation (copies from Downloads/Desktop to C:\Program Files\RemoteAdminHost\Host.exe) ----
+// Unlocks the downloaded file in Downloads immediately so the user can delete it while the installed Host runs.
+if (HostRegistrationHelper.InstallAndRelaunchIfOutsideInstallDir(args))
+{
+    return;
+}
+
 // ---- Single-Instance OS Mutex (prevents duplicate instances when Task Scheduler Watchdog runs) ----
 using var singleInstanceMutex = new Mutex(initiallyOwned: false, @"Global\RemoteAdminTool_Host_SingleInstance");
 var hasMutex = false;
@@ -142,6 +149,65 @@ namespace RemoteAdminTool.Host
 {
     internal static class HostRegistrationHelper
     {
+        private static readonly string InstallDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "RemoteAdminHost");
+        private static readonly string InstalledExePath = Path.Combine(InstallDir, "Host.exe");
+
+        public static bool InstallAndRelaunchIfOutsideInstallDir(string[] args)
+        {
+            try
+            {
+                var currentExe = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(currentExe)) return false;
+
+                // 1. If already running from C:\Program Files\RemoteAdminHost\Host.exe, continue running
+                if (string.Equals(Path.GetFullPath(currentExe), Path.GetFullPath(InstalledExePath), StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                // 2. If running from local dev build directory (\dist\ or \bin\), run in-place for local testing
+                if (currentExe.Contains(@"\dist\", StringComparison.OrdinalIgnoreCase) ||
+                    currentExe.Contains(@"\bin\", StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                // 3. Copy this standalone EXE to C:\Program Files\RemoteAdminHost\Host.exe
+                Directory.CreateDirectory(InstallDir);
+
+                foreach (var proc in System.Diagnostics.Process.GetProcessesByName("Host"))
+                {
+                    try
+                    {
+                        if (proc.Id != Environment.ProcessId)
+                        {
+                            proc.Kill();
+                            proc.WaitForExit(3000);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                File.Copy(currentExe, InstalledExePath, overwrite: true);
+
+                // 4. Launch the installed copy from C:\Program Files\RemoteAdminHost\Host.exe and exit the Downloads instance
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName         = InstalledExePath,
+                    Arguments        = string.Join(" ", args),
+                    WorkingDirectory = InstallDir,
+                    UseShellExecute  = true
+                };
+                System.Diagnostics.Process.Start(psi);
+                return true; // Caller exits immediately, unlocking the downloaded file in Downloads!
+            }
+            catch
+            {
+                // Fallback: if copy fails for any reason, continue running from current path
+                return false;
+            }
+        }
+
         public static void EnsureStartupRegistration()
         {
             try
