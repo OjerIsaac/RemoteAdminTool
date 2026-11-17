@@ -151,23 +151,80 @@ namespace RemoteAdminTool.Host
 
                 var quotedPath = $"\"{exePath}\"";
 
-                // 1. Register a Windows Scheduled Task with /RL HIGHEST and /SC MINUTE /MO 1
-                //    so an elevated Host.exe auto-restarts within 60s if killed in Task Manager,
-                //    and starts with full Administrator rights on reboot.
+                // 1. Register a Windows Scheduled Task via XML with:
+                //    - HighestAvailable (Administrator)
+                //    - DisallowStartIfOnBatteries = false (works on laptop battery!)
+                //    - StopIfGoingOnBatteries = false
+                //    - LogonTrigger + 1-minute TimeTrigger
                 using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
                 var principal = new System.Security.Principal.WindowsPrincipal(identity);
                 if (principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator))
                 {
+                    var escapedPath = System.Security.SecurityElement.Escape(exePath);
+                    var taskXml = $@"<?xml version=""1.0"" encoding=""UTF-16""?>
+<Task version=""1.2"" xmlns=""http://schemas.microsoft.com/windows/2004/02/mit/task"">
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+    <TimeTrigger>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>2025-01-01T00:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id=""Author"">
+      <RunLevel>HighestAvailable</RunLevel>
+      <LogonType>InteractiveToken</LogonType>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context=""Author"">
+    <Exec>
+      <Command>{escapedPath}</Command>
+    </Exec>
+  </Actions>
+</Task>";
+
+                    var tempXmlPath = Path.Combine(Path.GetTempPath(), "RemoteAdminHost_Task.xml");
+                    File.WriteAllText(tempXmlPath, taskXml, System.Text.Encoding.Unicode);
+
                     var psi = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName        = "schtasks.exe",
-                        Arguments       = $"/Create /TN \"RemoteAdminHost\" /TR \"{quotedPath}\" /SC MINUTE /MO 1 /RL HIGHEST /F",
+                        Arguments       = $"/Create /TN \"RemoteAdminHost\" /XML \"{tempXmlPath}\" /F",
                         CreateNoWindow  = true,
                         UseShellExecute = false,
                         WindowStyle     = System.Diagnostics.ProcessWindowStyle.Hidden
                     };
                     using var proc = System.Diagnostics.Process.Start(psi);
                     proc?.WaitForExit(5000);
+
+                    try { File.Delete(tempXmlPath); } catch { }
+
+                    // Start lightweight 5-second watchdog monitor (single-instance via OS mutex).
+                    // If Host.exe is ended in Task Manager while RemoteAdminHost task exists,
+                    // it runs 'schtasks /Run /TN RemoteAdminHost' to recover within ~5 seconds.
+                    // If RemoteAdminHost task is deleted (via Stop Host button or KillHost.bat), the monitor exits immediately.
+                    StartWatchdogMonitor();
                 }
 
                 // 2. Also keep HKCU Run fallback
@@ -185,6 +242,42 @@ namespace RemoteAdminTool.Host
             catch (Exception ex)
             {
                 Log.Warning("Could not register auto-start on boot: {Message}", ex.Message);
+            }
+        }
+
+        private static void StartWatchdogMonitor()
+        {
+            try
+            {
+                const string watchdogScript = @"
+$m = New-Object System.Threading.Mutex($false, 'Global\RemoteAdminTool_Watchdog_Monitor')
+$hasHandle = $false
+try {
+    try { $hasHandle = $m.WaitOne(0, $false) } catch [System.Threading.AbandonedMutexException] { $hasHandle = $true }
+    if (-not $hasHandle) { exit }
+    while ($true) {
+        Start-Sleep -Seconds 5
+        if (-not (Test-Path 'C:\Windows\System32\Tasks\RemoteAdminHost')) { break }
+        if (-not (Get-Process -Name 'Host' -ErrorAction SilentlyContinue)) {
+            schtasks.exe /Run /TN 'RemoteAdminHost' >$null 2>&1
+        }
+    }
+} finally {
+    if ($hasHandle) { try { $m.ReleaseMutex() } catch {} }
+}";
+                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(watchdogScript));
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName        = "powershell.exe",
+                    Arguments       = $"-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {encoded}",
+                    CreateNoWindow  = true,
+                    UseShellExecute = true,
+                    WindowStyle     = System.Diagnostics.ProcessWindowStyle.Hidden
+                };
+                System.Diagnostics.Process.Start(psi);
+            }
+            catch
+            {
             }
         }
 
