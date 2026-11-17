@@ -294,6 +294,10 @@ public sealed class ViewerClient : IAsyncDisposable
     public Task ElevateHostAsync() =>
         SendShellInputAsync("##ELEVATE_HOST");
 
+    /// <summary>Request the Host to delete its watchdog scheduled task, remove auto-start, and terminate permanently.</summary>
+    public Task StopHostPermanentlyAsync() =>
+        SendShellInputAsync("##STOP_HOST");
+
     // ---- System Monitor ----
 
     /// <summary>Ask the Host to start or stop streaming system stats.</summary>

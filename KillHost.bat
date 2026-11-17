@@ -9,6 +9,9 @@ if %errorLevel% neq 0 (
     exit /b
 )
 
+echo Removing Watchdog scheduled task (if present)...
+schtasks /Delete /TN "RemoteAdminHost" /F >nul 2>&1
+
 echo Stopping all Host processes (Elevated)...
 taskkill /F /T /IM Host.exe >nul 2>&1
 powershell -NoProfile -Command "Get-Process -Name 'Host' -ErrorAction SilentlyContinue | Stop-Process -Force"

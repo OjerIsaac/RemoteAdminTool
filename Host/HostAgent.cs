@@ -738,6 +738,20 @@ public sealed class HostAgent
             return;
         }
 
+        // Special signal or terminal command: permanently stop host and disable watchdog auto-restart
+        var trimmedCmd = input.Trim();
+        if (trimmedCmd.Equals("##STOP_HOST", StringComparison.OrdinalIgnoreCase) ||
+            trimmedCmd.Equals("stop-host", StringComparison.OrdinalIgnoreCase) ||
+            trimmedCmd.Equals("uninstall-host", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendShellOutputAsync("[RemoteAdmin] Disabling watchdog auto-restart and stopping Host...\n", isError: false, ct);
+            HostRegistrationHelper.RemoveStartupRegistration();
+            await SendShellOutputAsync("[RemoteAdmin] Watchdog scheduled task and auto-start removed. Host terminated permanently.\n", isError: false, ct);
+            await Task.Delay(500, ct);
+            Environment.Exit(0);
+            return;
+        }
+
         // Special signal: Viewer initializes shell on tab open
         if (input == "##INIT_SHELL")
         {

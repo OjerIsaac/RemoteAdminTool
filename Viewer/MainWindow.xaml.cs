@@ -520,6 +520,34 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void StopHostButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client is null || _activeSessionMachineId is null) return;
+
+        var res = MessageBox.Show(
+            "Are you sure you want to permanently stop this remote Host?\n\n" +
+            "• The Watchdog scheduled task will be deleted.\n" +
+            "• Auto-start on boot will be removed.\n" +
+            "• The Host process will terminate immediately.\n\n" +
+            "It will NOT restart automatically.",
+            "Permanently Stop Host",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (res == MessageBoxResult.Yes)
+        {
+            var endedMachineId = _activeSessionMachineId;
+            await _client.StopHostPermanentlyAsync();
+            MessageBox.Show(
+                "Stop command sent to Host.\n\nThe Host process is terminating and its watchdog auto-restart task has been removed.",
+                "Host Stopped",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            await _client.DisconnectFromHostAsync(endedMachineId);
+            EndSessionUI(endedMachineId);
+        }
+    }
+
     private void EndSessionUI(string? disconnectedMachineId = null)
     {
         var prevMachineId = disconnectedMachineId ?? _activeSessionMachineId;

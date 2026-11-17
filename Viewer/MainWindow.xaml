@@ -433,6 +433,12 @@
                                 Background="#f38ba8" Foreground="#1e1e2e" FontWeight="SemiBold"
                                 Padding="12,4"
                                 ToolTip="Ends the active remote session and returns to dashboard. Remote host remains online."/>
+                        <Button x:Name="StopHostButton" Content="🛑 Stop Host"
+                                Click="StopHostButton_Click"
+                                Style="{StaticResource SidebarButton}"
+                                Background="#eba0ac" Foreground="#1e1e2e" FontWeight="SemiBold"
+                                Padding="10,4" Margin="6,0,0,0"
+                                ToolTip="Permanently stops the remote Host process and removes its auto-restart watchdog scheduled task. It will NOT restart automatically."/>
                     </StackPanel>
                 </DockPanel>
             </Border>
