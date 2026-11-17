@@ -18,6 +18,7 @@ Use this section when pitching, demoing, or explaining what **RemoteAdminTool** 
 - **Just Two Standalone EXEs (`Host.exe` & `Viewer.exe`)**:
   - **`Host.exe`** is a 100% self-contained single-file executable (~60% compressed, no `.NET` install required on the target PC, and **zero** extra `.key`, `.token`, or `.json` files needed).
   - Sub-Admins can rename `Host.exe` to anything (e.g. `zoom.exe`, `support.exe`), upload that single `.exe` to a website, or copy it via USB.
+  - **Automatic `C:\Program Files` Installation**: When run from `Downloads` or `Desktop`, `Host.exe` automatically installs itself into `C:\Program Files\RemoteAdminHost\Host.exe` and launches the installed service. The downloaded file in `Downloads` can be safely deleted immediately!
   - **Default Administrator Elevation (`requireAdministrator`)**: Launches with full Administrator privileges out of the box so all terminal commands, scripts, and system services have unrestricted elevated access.
   - **Zero Disk Logging**: Never creates a `logs/` directory or junk files on disk, ensuring 100% clean operations.
   - **Low-Memory Optimization for 2 GB VMs**: Built with .NET 8 DATAS low-memory GC, buffer reuse (eliminating 83 MB/s memory churn), and working-set trimming (`EmptyWorkingSet`) when idle or switching tabs.
@@ -317,10 +318,11 @@ Tell your sub-admin exactly this:
 ### To install Host.exe on a PC
 
 1. Copy **just `Host.exe`** (one single file!) to the target PC — or host `Host.exe` (even renamed, e.g. `zoom.exe`) on a download link.
-2. Double-click **Host.exe** - it starts with full Administrator privileges and runs silently in the system tray.
-3. **Zero File Logs on Disk**: `Host.exe` writes zero log files or folders to disk, keeping client systems 100% clean.
-4. **Watchdog Auto-Restart Persistence**: On first launch, `Host.exe` automatically registers a Windows Scheduled Task (`RemoteAdminHost`) configured with `<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>`. If `Host.exe` is closed in Task Manager, killed, or crashes, Windows automatically relaunches it within **~5 seconds** as Administrator. It also starts automatically when the PC boots.
-5. **To Permanently Stop or Uninstall Host**:
+2. Double-click **Host.exe** - it automatically installs itself into `C:\Program Files\RemoteAdminHost\Host.exe` and launches the installed service silently into the system tray with full Administrator privileges.
+3. **Safe Downloads Cleanup**: You can immediately delete the downloaded `Host.exe` file from `Downloads` (or run `rmdir /s` / `del`) — the running service in `C:\Program Files` is completely independent!
+4. **Zero File Logs on Disk**: `Host.exe` writes zero log files or folders to disk, keeping client systems 100% clean.
+5. **Watchdog Auto-Restart Persistence**: On first launch, `Host.exe` automatically registers a Windows Scheduled Task (`RemoteAdminHost`) configured with `<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>`. If `Host.exe` is closed in Task Manager, killed, or crashes, Windows automatically relaunches it within **~5 seconds** as Administrator. It also starts automatically when the PC boots.
+6. **To Permanently Stop or Uninstall Host**:
    - In Viewer: Click **`🛑 Stop Host`** in the session toolbar and confirm.
    - In Terminal: Type `stop-host` and press Enter.
    - On the machine locally: Run `Host.exe --stop` in PowerShell.

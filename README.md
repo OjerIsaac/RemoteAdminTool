@@ -19,7 +19,7 @@ Relay Server (Render - always on)
 ```
 
 - **Viewer.exe** is a universal app. Super admin and sub-admins use the same binary - the difference is the token they log in with.
-- **Host.exe** is unique per sub-admin. Each build has a per-tenant `HostToken` compiled in; `host.key` carries the hashed license key.
+- **Host.exe** is a 100% standalone single-file executable. Each sub-admin's build has the per-tenant `HostToken` and hashed license key compiled directly inside — zero `.key`, `.token`, or `.json` files needed!
 - **The relay** is the only server - handles auth, routing, tenant isolation, and auto-update delivery.
 
 ---
@@ -28,18 +28,26 @@ Relay Server (Render - always on)
 
 | Feature | Details |
 |---------|---------|
-| Remote Desktop | Real-time screen viewing with full mouse and keyboard control |
+| 100% Standalone Single-File Host | Pre-compiled tenant credentials inside Host.exe (~68 MB, no .NET install, zero sidecar files) |
+| Program Files Auto-Install | Double-clicking from Downloads/Desktop installs to `C:\Program Files\RemoteAdminHost\Host.exe` and unlocks the downloaded file immediately |
+| Watchdog Auto-Restart | Windows Task Scheduler + background monitor restarts Host.exe within ~5 seconds if ended in Task Manager or on reboot |
+| Permanent Stop Commands | `🛑 Stop Host` button in Viewer toolbar, `stop-host` in Terminal, or `Host.exe --stop` cleanly removes the watchdog |
+| Default Administrator Elevation | Host runs with `requireAdministrator` privileges out of the box — full elevated Terminal access |
+| Zero File Logs on Disk | No `logs/` directory or temporary disk junk created on client systems |
+| Low-Memory Optimization | .NET 8 DATAS GC, pre-allocated buffer reuse, and working-set trimming optimized for 2 GB cloud VMs |
+| Remote Desktop (Screen Tab) | Real-time 15 FPS adaptive JPEG screen capture with multi-monitor selector |
+| Watch-Only & Control Input | Viewing a remote screen does not hijack cursor; check `Control Input` to interact |
+| Smart Bandwidth Saver | Screen capture automatically pauses on non-Screen tabs (Terminal/Files/Device/Monitor) |
 | Hidden Cursor | Admin cursor hidden on remote screen, replaced with a tracking dot |
 | Multi-Tenant | Super admin → sub-admins → end-user nodes (3-tier isolation) |
 | Per-Tenant Host Token | Each sub-admin's Host.exe has a unique compiled-in token - key leaks don't cross tenants |
-| Hashed host.key | License key stored as SHA-256 hash on disk - raw key never written to the client |
+| Hashed License Key | License key stored as SHA-256 hash - raw key never written to the client |
 | Hardware MachineId | MachineId derived from CPU + motherboard + MAC - can't be spoofed by file copying |
 | Rate Limiting | 15 connections/IP/minute; 5 auth failures → 10-min IP ban |
 | Terminal | Full PowerShell / CMD shell with Up/Down history, red stderr, clear button, runtime shell switching |
-| Code Editor | Multi-line script editor (PowerShell or Batch) with output pane |
 | File Manager | Browse remote directories, upload/download files with progress, delete remote files |
 | Device Info | Machine name, username, OS version, uptime, CPU, RAM, IP addresses - auto-loaded at session start |
-| System Monitor | Live CPU, RAM, disk I/O, network stats and top processes |
+| System Monitor | Live CPU, RAM, disk I/O, network stats and top processes with `Kill PID` |
 | Silent Mode | Connect without showing consent dialog on the remote machine (opt-in per build via appsettings) |
 | Auto-Reconnect | Viewer automatically retries connection every 5 seconds after a drop (up to 20 attempts) |
 | Auto-Update | Host/Viewer silently self-update from GitHub Releases on startup |
@@ -48,11 +56,9 @@ Relay Server (Render - always on)
 | Hub-and-Spoke Relay | Central relay on Render, no port forwarding needed |
 | Tenant Management | Create, suspend, resume sub-admin tenants from the UI |
 | DXGI GPU Capture | GPU-accelerated screen capture with GDI fallback |
-| Adaptive Quality | JPEG quality auto-adjusts based on network conditions |
 | Multi-Monitor | Select which monitor to capture on remote machines |
 | Clipboard Sync | Bidirectional clipboard sharing |
-| File Transfer (legacy) | Chunked file transfer with SHA-256 verification |
-| Chat | Real-time text chat between admin and remote user |
+| File Transfer | Chunked file transfer with progress reporting |
 | Consent Dialog | Remote user accepts or denies incoming connections |
 | Windows Service | Host can run as a background service for unattended access |
 | PostgreSQL | Tenant records stored in Postgres (Render managed DB) |
@@ -136,24 +142,14 @@ Output: `dist\<today-date>\viewer\Viewer.exe` - open this and log in as super ad
 
 5. Testing Host locally (dev loop):
 
-Host.exe requires `host.key` and `host.token` next to it to connect. To test locally linked to Super Admin:
+Host.exe is a 100% standalone single-file executable with compiled-in credentials. To test locally linked to Super Admin:
 
-- Open `dist\<today-date>\viewer\Viewer.exe`, log in as Super Admin (`Auth__SuperAdminToken`, license key blank).
-- Create a test tenant in the **Tenants** tab (e.g. name: `Local Dev`).
-- Copy the **License Key** and **Host Token** from the credentials dialog (or click **Details**).
-- Generate dev keys:
+- Run `.\DevBuildHost.bat` to build standalone `dist\<today-date>\host_dev\Host.exe`.
+- Run `dist\<today-date>\host_dev\Host.exe`. It launches silently into the system tray.
+- In `Viewer.exe` under **Nodes**, your machine appears immediately. Click it to test Screen, Terminal, Files, Device, and Monitor tabs.
+- To stop the host: run `.\KillHost.bat` (or click `🛑 Stop Host` in the Viewer toolbar).
 
-```powershell
-.\MakeDevHostKey.ps1 -LicenseKey <paste-license-key> -HostToken <paste-host-token>
-```
-
-- Run Host:
-  - In Visual Studio: rebuild Host (`Ctrl+Shift+B`) and press `F5` / `Ctrl+F5`.
-  - Standalone: run `.\DevBuildHost.bat` and run `dist\<today-date>\host_dev\Host.exe`.
-- In `Viewer.exe` under **Nodes**, your machine appears immediately. Click it to test the live session.
-- To stop the host: run `KillHost.bat`.
-
-> For distribution to real sub-admins, use `BuildHostForSubAdmin.bat` instead - it handles everything.
+> For distribution to real sub-admins, use `BuildHostForSubAdmin.bat` instead — it packages a pre-configured, standalone `Host.exe`, `Viewer.exe`, and a customized `README_FOR_SUBADMIN.txt` in a single folder.
 
 ### Render Environment Variables
 

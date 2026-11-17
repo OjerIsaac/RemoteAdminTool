@@ -306,7 +306,9 @@ HOW TO DEPLOY HOST.EXE:
 - Host.exe is a 100% standalone, single-file executable.
 - Your tenant credentials are compiled directly inside Host.exe (no .key, .token, or .json files needed!).
 - You can rename Host.exe to anything you prefer (e.g., SupportAgent.exe, ClientHost.exe) and deploy it to as many Windows PCs or VMs as your seat limit allows.
-- Double-clicking Host.exe runs it silently in the system tray and registers it to auto-start on PC reboot.
+- Automatic Installation: When double-clicked from Downloads or Desktop, Host.exe automatically installs itself into "C:\Program Files\RemoteAdminHost\Host.exe" and starts.
+- Safe Download Cleanup: You can safely delete the downloaded Host.exe file from your Downloads folder immediately after running it — the installed host in Program Files continues running independently!
+- Auto-Start on Reboot: Registers in Windows Task Scheduler and Registry to auto-start silently on PC reboot.
 
 KEY FEATURES AVAILABLE IN YOUR VIEWER:
 --------------------------------------------------------------------------------
