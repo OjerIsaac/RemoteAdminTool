@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # build.ps1 - RemoteAdminTool Master Build Script
 # ============================================================
 # Usage:
@@ -285,23 +285,69 @@ if ($PublishHostForTenant) {
 
         $displayNameLine = if ($TenantName) { "Tenant / Client:    $TenantName`n" } else { "" }
         $subAdminReadme = @"
+================================================================================
 RemoteAdminTool - Standalone Sub-Admin Package
+================================================================================
 Generated:          $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 $displayNameLine
+YOUR LOGIN CREDENTIALS (FOR VIEWER.EXE):
+--------------------------------------------------------------------------------
 Admin Token:        $AdminToken
 Tenant License Key: $PublishHostForTenant
 
 HOW TO LOG INTO VIEWER.EXE:
-1. Open Viewer.exe
-2. Paste your Admin Token into the "Admin Token" field.
-3. Paste your Tenant License Key into the "License Key (Sub-Admin)" field.
+1. Double-click Viewer.exe
+2. In the "Admin Token" field, paste your Admin Token above.
+3. In the "License Key (Sub-Admin)" field, paste your Tenant License Key above.
 4. Click "Connect to Relay".
+5. Your fleet of managed machines will appear in the "Managed Nodes" sidebar.
 
-HOW IT WORKS (SINGLE-FILE HOST.EXE):
-- Host.exe is 100% standalone (your tenant credentials are compiled inside Host.exe).
-- No host.key, host.token, or appsettings.json files are needed!
-- You can deploy Host.exe (or rename it) on as many host PCs as your plan allows.
-- Double-clicking Host.exe runs it silently in the tray and registers it to auto-start on PC reboot.
+HOW TO DEPLOY HOST.EXE:
+- Host.exe is a 100% standalone, single-file executable.
+- Your tenant credentials are compiled directly inside Host.exe (no .key, .token, or .json files needed!).
+- You can rename Host.exe to anything you prefer (e.g., SupportAgent.exe, ClientHost.exe) and deploy it to as many Windows PCs or VMs as your seat limit allows.
+- Double-clicking Host.exe runs it silently in the system tray and registers it to auto-start on PC reboot.
+
+KEY FEATURES AVAILABLE IN YOUR VIEWER:
+--------------------------------------------------------------------------------
+1. SCREEN (Live Desktop & Remote Control)
+   - Real-time 15 FPS adaptive JPEG screen streaming with multi-monitor support.
+   - Watch-Only by default: Viewing a remote screen will not hijack the user's cursor.
+   - "Control Input" toggle: Check this box in the toolbar whenever you want to click, type, and remotely control the machine.
+   - Smart Bandwidth Saver: Screen streaming pauses automatically when switching to other tabs to dedicate 100% network bandwidth.
+
+2. TERMINAL (Administrator Console)
+   - Native direct-typing interactive terminal (PowerShell or CMD).
+   - Runs with full Administrator privileges out of the box.
+   - Command history (Up/Down arrow keys) and full script execution support.
+
+3. FILES (Remote File Explorer)
+   - Quick Access bar: All Drives, C:\, Desktop, Downloads, Documents, and Temp.
+   - Upload files from your PC to the remote host.
+   - Download files from the remote host to your PC.
+   - Delete files or folders remotely with 1 click.
+
+4. DEVICE (Hardware & OS Overview)
+   - Instant summary of Hostname, Domain\User, Windows Build, Uptime, CPU, Total RAM, Drive Capacity, and all Local IP addresses.
+
+5. MONITOR (Live Performance & Process Manager)
+   - Real-time CPU, RAM, Disk Read/Write, and Network activity charts.
+   - Top Running Processes table with a "Kill PID" button to terminate misbehaving tasks.
+
+RELIABILITY, PERSISTENCE & CLEAN FOOTPRINT:
+--------------------------------------------------------------------------------
+- Zero File Logs on Disk: Host.exe never creates a "logs/" folder or writes temporary log junk on host PCs or servers.
+- Low-Memory Optimization: Engineered to run smoothly on small cloud VMs and VPS instances (even 2 GB RAM / 1 vCPU).
+- Watchdog Auto-Restart Persistence: If Host.exe is closed in Task Manager or the machine restarts, Windows Task Scheduler automatically recovers and restarts Host.exe within ~5 seconds with full Administrator rights.
+
+HOW TO PERMANENTLY STOP OR UNINSTALL A HOST:
+--------------------------------------------------------------------------------
+If you ever want to permanently stop the Host on a machine so it does NOT restart:
+Option A (From Viewer UI): In an active session, click the red "🛑 Stop Host" button in the toolbar and confirm.
+Option B (From Terminal): In the Terminal tab, type "stop-host" and press Enter.
+Option C (Local CLI on Host): Run "Host.exe --stop" in PowerShell on the target machine.
+Any of these will delete the watchdog scheduled task, remove startup auto-run, and terminate the Host process permanently.
+================================================================================
 "@
         Set-Content -Path (Join-Path $distTenantHost "README_FOR_SUBADMIN.txt") -Encoding UTF8 -Value $subAdminReadme
 

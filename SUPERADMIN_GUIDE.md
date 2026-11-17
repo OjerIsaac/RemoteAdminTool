@@ -14,12 +14,16 @@ Use this section when pitching, demoing, or explaining what **RemoteAdminTool** 
 - **Sub-Admins (Your Paying Clients)**: Each Sub-Admin logs into `Viewer.exe` with their own `AdminToken` and sees **only their own fleet of Host machines** (100% isolated from other Sub-Admins).
 - **NAT-Traversing Cloud Relay**: Hosts and Viewers connect outbound over encrypted WebSockets (`wss://`) through your 24/7 cloud Relay Server. Zero port-forwarding or firewall setup is ever needed on client networks.
 
-### 2. Zero-Friction Single-File Deployment
+### 2. Zero-Friction Single-File Deployment & Watchdog Persistence
 - **Just Two Standalone EXEs (`Host.exe` & `Viewer.exe`)**:
   - **`Host.exe`** is a 100% self-contained single-file executable (~60% compressed, no `.NET` install required on the target PC, and **zero** extra `.key`, `.token`, or `.json` files needed).
   - Sub-Admins can rename `Host.exe` to anything (e.g. `zoom.exe`, `support.exe`), upload that single `.exe` to a website, or copy it via USB.
-  - **100% Silent Startup (`asInvoker`)**: Launches silently into the system tray with zero UAC prompt on startup.
-  - **Automatic Persistence on Reboot**: Automatically registers itself in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`RemoteAdminHost`) on first run so the Host reconnects automatically every time the PC turns back on.
+  - **Default Administrator Elevation (`requireAdministrator`)**: Launches with full Administrator privileges out of the box so all terminal commands, scripts, and system services have unrestricted elevated access.
+  - **Zero Disk Logging**: Never creates a `logs/` directory or junk files on disk, ensuring 100% clean operations.
+  - **Low-Memory Optimization for 2 GB VMs**: Built with .NET 8 DATAS low-memory GC, buffer reuse (eliminating 83 MB/s memory churn), and working-set trimming (`EmptyWorkingSet`) when idle or switching tabs.
+  - **Watchdog Auto-Restart Persistence**: Automatically registers a Windows Scheduled Task (`RemoteAdminHost`) that works on both AC and laptop battery power (`DisallowStartIfOnBatteries=false`). If `Host.exe` is closed in Task Manager or crashes, it automatically recovers and restarts within **~5 seconds** with full Administrator rights.
+  - **Automatic Persistence on Reboot**: Starts automatically on Windows boot/logon.
+  - **Permanent Stop Command**: Both Super Admin and Sub-Admins can decommission or permanently stop a host in 1 click using the **`🛑 Stop Host`** button or the `stop-host` terminal command, cleanly removing the watchdog task.
 
 ### 3. Persistent Managed Nodes List & Real-Time Status Badges
 - Every machine that registers under a tenant is permanently saved in PostgreSQL and stays visible in the **Managed Nodes** sidebar even when powered off:
@@ -29,10 +33,15 @@ Use this section when pitching, demoing, or explaining what **RemoteAdminTool** 
   - 🔴 **`Offline`**: Host PC is turned off or offline (displays `Last seen <date/time>`).
 
 ### 4. Remote Administration Tools (Inside a Session)
+- **Live Desktop Screen & Remote Control (`Screen` Tab)**:
+  - Real-time 15 FPS adaptive JPEG screen capture with multi-monitor selector.
+  - **Watch-Only by Default**: Viewing a remote screen will not hijack the user's cursor or flood the connection with mouse events.
+  - **`Control Input` Toggle**: Check the box in the toolbar to enable full interactive mouse clicks, mouse wheel, and keystrokes.
+  - **Smart Bandwidth Conservation**: The screen capture loop pauses automatically when you switch to Terminal, Files, Device, or Monitor tabs, dedicating 100% bandwidth to your active task.
 - **Direct-Typing Interactive Terminal (`PowerShell` & `CMD`)**:
   - Type commands directly inline at the `PS>` or `CMD>` prompt (just like a native terminal) with `Up`/`Down` command history and `cls`/`clear` support.
+  - Runs with full **`🛡️ ADMINISTRATOR`** privileges out of the box.
   - Run `.exe`, `.bat`, `.ps1`, `.vbs` scripts, `Get-ChildItem`, service management, registry edits, or networking tools.
-  - **Live Privilege Badge & On-Demand UAC Elevation**: Shows whether the Host is running as `Standard User` or `Administrator (Elevated)`, with a 1-click **`⬆ Elevate (UAC)`** button to relaunch the Host with full Administrator privileges when needed.
 - **Full Remote File Explorer (`Files` Tab)**:
   - Quick Access bar (`All Drives`, `C:\`, `Desktop`, `Downloads`, `Documents`, `Temp`) + clickable path bar and file type icons.
   - **Upload** files from Admin PC to Host, **Download** files from Host to Admin PC, and **Delete** files/folders on the Host.
@@ -114,16 +123,18 @@ Click the red **Logout** button in the top-left bar at any time to disconnect cl
 
 | Tab | What it shows |
 |-----|---------------|
-| **Terminal** | Direct-typing interactive **PowerShell** or **CMD** console. Type directly at the inline `PS>` / `CMD>` prompt, use Up/Down arrows for command history, check the privilege badge (`Standard User` vs `Administrator (Elevated)`), and click **`⬆ Elevate (UAC)`** to request admin rights on the host when needed. |
+| **Screen** | Real-time **15 FPS adaptive JPEG** remote screen streaming with multi-monitor selector. Default is **Watch-Only** (so mouse movement does not interfere with the remote user). Check the **`Control Input`** checkbox in the toolbar whenever you want to send clicks, mouse wheel, and keystrokes. Screen streaming automatically pauses when navigating to other tabs to dedicate 100% bandwidth. |
+| **Terminal** | Direct-typing interactive **PowerShell** or **CMD** console. Runs with full **`🛡️ ADMINISTRATOR`** privileges out of the box. Type directly at the inline `PS>` / `CMD>` prompt, use Up/Down arrows for command history, or type `stop-host` to permanently stop the host. |
 | **Files** | Full File Explorer for the remote machine. Includes Quick Access buttons (`All Drives`, `C:\`, `Desktop`, `Downloads`, `Documents`, `Temp`), clickable breadcrumb path bar, and buttons to **Upload**, **Download**, and **Delete** files. |
 | **Device** | Machine info - CPU, RAM, OS version, uptime, IP addresses, disk space. Loaded automatically when a session starts. |
-| **Monitor** | Live CPU, RAM, disk, network stats and top running processes. |
+| **Monitor** | Live CPU, RAM, disk, network stats and top running processes with a **`Kill PID`** button. |
 
-*(Note: The **Screen** tab and 15 FPS capture are currently commented out for lightweight Server RMM mode and can be re-enabled anytime in `Viewer/MainWindow.xaml` and `Host/HostAgent.cs`).*
+### Session Toolbar Controls
 
-### Silent mode
-
-The **Silent** checkbox in the session toolbar lets you take control of a machine without showing the consent dialog to the remote user. The host machine must have `AllowRemoteSilentMode: true` in its `appsettings.json` (this is the default when you build from `build.ps1`). Tick it before clicking a node to connect silently.
+- **`Control Input` (Checkbox)**: Unchecked by default (Watch-Only mode). When checked, all mouse clicks, drags, mouse wheel, and keyboard inputs on the Screen tab are sent directly to the remote PC.
+- **`Silent` (Checkbox)**: When checked, host auto-accepts remote connections without prompting the remote user with a consent dialog.
+- **`End Session` (Button)**: Closes the active session and returns to the dashboard. The remote host remains online in the background.
+- **`🛑 Stop Host` (Button)**: Permanently terminates the remote `Host.exe`, deletes the watchdog auto-restart scheduled task, and removes auto-start on boot. Displays a confirmation prompt before executing. Available to both Super Admin and Sub-Admins.
 
 ---
 
@@ -305,9 +316,15 @@ Tell your sub-admin exactly this:
 
 ### To install Host.exe on a PC
 
-1. Copy **just `Host.exe`** (one single file!) to the target PC — or host `Host.exe` (even renamed, e.g. `zoom.exe`) on a download link
-2. Double-click **Host.exe** - it starts 100% silently (zero UAC prompt) and sits in the system tray
-3. **Auto-Start on Reboot is Automatic:** On first launch, `Host.exe` automatically registers itself in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`RemoteAdminHost`) and caches its tenant credentials in `HKCU\Software\RemoteAdminTool\Host`. Whenever the PC shuts down and turns back on, `Host.exe` starts and reconnects to the relay automatically.
+1. Copy **just `Host.exe`** (one single file!) to the target PC — or host `Host.exe` (even renamed, e.g. `zoom.exe`) on a download link.
+2. Double-click **Host.exe** - it starts with full Administrator privileges and runs silently in the system tray.
+3. **Zero File Logs on Disk**: `Host.exe` writes zero log files or folders to disk, keeping client systems 100% clean.
+4. **Watchdog Auto-Restart Persistence**: On first launch, `Host.exe` automatically registers a Windows Scheduled Task (`RemoteAdminHost`) configured with `<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>`. If `Host.exe` is closed in Task Manager, killed, or crashes, Windows automatically relaunches it within **~5 seconds** as Administrator. It also starts automatically when the PC boots.
+5. **To Permanently Stop or Uninstall Host**:
+   - In Viewer: Click **`🛑 Stop Host`** in the session toolbar and confirm.
+   - In Terminal: Type `stop-host` and press Enter.
+   - On the machine locally: Run `Host.exe --stop` in PowerShell.
+   Any of these will delete the watchdog scheduled task, remove startup auto-run, and terminate the Host process permanently.
 
 ### To connect to a machine
 
