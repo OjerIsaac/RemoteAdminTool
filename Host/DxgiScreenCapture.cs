@@ -60,11 +60,14 @@ public sealed class DxgiScreenCapture : IScreenCapture
 
     public void SelectMonitor(int monitorIndex)
     {
-        if (_selectedMonitor != monitorIndex)
+        lock (_lock)
         {
-            _selectedMonitor = monitorIndex;
-            Cleanup();
-            _initialized = false;
+            if (_selectedMonitor != monitorIndex)
+            {
+                _selectedMonitor = monitorIndex;
+                Cleanup();
+                _initialized = false;
+            }
         }
     }
 
@@ -72,15 +75,15 @@ public sealed class DxgiScreenCapture : IScreenCapture
     {
         lock (_lock)
         {
-            EnsureInitialized();
-
-            if (_duplication is null || _stagingTexture is null || _device is null)
-            {
-                throw new InvalidOperationException("DXGI Desktop Duplication not available.");
-            }
-
             try
             {
+                EnsureInitialized();
+
+                if (_duplication is null || _stagingTexture is null || _device is null)
+                {
+                    return Array.Empty<byte>();
+                }
+
                 // Try to acquire the next frame (timeout 100ms)
                 var result = _duplication.TryAcquireNextFrame(100, out _, out Resource? screenResource);
 
@@ -137,12 +140,11 @@ public sealed class DxgiScreenCapture : IScreenCapture
                     _device.ImmediateContext.UnmapSubresource(_stagingTexture, 0);
                 }
             }
-            catch (SharpDXException ex) when (ex.ResultCode.Code == ResultCode.AccessLost.Code
-                                              || ex.ResultCode.Code == ResultCode.DeviceRemoved.Code)
+            catch (Exception ex)
             {
-                // Access lost - desktop switch, UAC prompt, lock screen, etc.
-                // Re-initialize on next call.
-                Console.Error.WriteLine("[DXGI] Access lost, will reinitialize on next capture");
+                // Any DXGI error (AccessLost, DeviceRemoved, hybrid GPU, elevation switch, etc.)
+                // Clean up and return empty so caller smoothly falls back to GDI without crashing the session.
+                Console.Error.WriteLine($"[DXGI] Capture error ({ex.Message}), falling back / reinitializing");
                 Cleanup();
                 _initialized = false;
                 return Array.Empty<byte>();

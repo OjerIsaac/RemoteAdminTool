@@ -405,6 +405,16 @@
 
                     <!-- Right toolbar -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- Control Input toggle (Watch-only by default so mouse movement doesn't hijack local cursor) -->
+                        <Border Background="#313244" CornerRadius="6" Margin="4" Padding="8,4"
+                                ToolTip="When ON: mouse clicks and keystrokes on the Screen tab control the remote PC. Leave OFF for Watch-Only live view.">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Control Input" Foreground="#a6adc8" FontSize="11"
+                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <CheckBox x:Name="ControlInputCheckBox"
+                                          VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
                         <!-- Silent mode toggle -->
                         <Border Background="#313244" CornerRadius="6" Margin="4" Padding="8,4"
                                 ToolTip="When ON: host auto-accepts connections without showing a consent dialog">

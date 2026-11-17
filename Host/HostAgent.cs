@@ -27,10 +27,12 @@ public sealed class HostAgent
     private readonly bool _unattendedMode;
     private readonly bool _allowRemoteSilentMode;
     private readonly IScreenCapture _capture = ScreenCaptureFactory.Create();
+    private readonly ScreenCapture _gdiFallback = new();
     private readonly InputInjector _input = new();
 
     private bool _silentMode; // runtime toggle - only effective when _allowRemoteSilentMode is true
     private volatile bool _inActiveSession;
+    private volatile bool _streamScreenFrames = true;
     private DateTime _lastUpdateCheckUtc = DateTime.UtcNow;
     private ClientWebSocket? _ws;
     private WebSocketStreamAdapter? _stream;
@@ -240,14 +242,24 @@ public sealed class HostAgent
     /// </summary>
     private async Task RunSessionAsync(CancellationToken ct)
     {
+        _streamScreenFrames = true;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-
-        await SendMonitorListAsync(cts.Token);
-        await SendDeviceInfoAsync(cts.Token);
-        await SendSystemInventoryAsync(cts.Token);
 
         var sendTask = FrameSendLoopAsync(cts.Token);
         var receiveTask = InputReceiveLoopAsync(cts.Token);
+
+        // Send initial monitor list, device info, and WMI inventory in background so
+        // InputReceiveLoopAsync (Terminal/Files) and FrameSendLoopAsync (Screen) start immediately!
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await SendMonitorListAsync(cts.Token);
+                await SendDeviceInfoAsync(cts.Token);
+                await SendSystemInventoryAsync(cts.Token);
+            }
+            catch { }
+        }, cts.Token);
 
         var finished = await Task.WhenAny(sendTask, receiveTask);
         cts.Cancel();
@@ -263,14 +275,29 @@ public sealed class HostAgent
     private async Task SendMonitorListAsync(CancellationToken ct)
     {
         if (_stream is null) return;
+        try
+        {
+            MonitorInfo[] monitors;
+            try
+            {
+                monitors = _capture.GetMonitors();
+            }
+            catch
+            {
+                monitors = _gdiFallback.GetMonitors();
+            }
 
-        var monitors = _capture.GetMonitors();
-        var monitorData = monitors.Select(m => new MonitorInfoData(
-            m.Index, m.Name, m.Width, m.Height, m.IsPrimary)).ToArray();
+            var monitorData = monitors.Select(m => new MonitorInfoData(
+                m.Index, m.Name, m.Width, m.Height, m.IsPrimary)).ToArray();
 
-        var msg = new MonitorListMessage(monitorData);
-        await MessageFraming.WriteFrameAsync(_stream, MessageType.MonitorList,
-            JsonSerializer.SerializeToUtf8Bytes(msg), ct);
+            var msg = new MonitorListMessage(monitorData);
+            await MessageFraming.WriteFrameAsync(_stream, MessageType.MonitorList,
+                JsonSerializer.SerializeToUtf8Bytes(msg), ct);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[HostAgent] SendMonitorList error: {ex.Message}");
+        }
     }
 
     private async Task SendDeviceInfoAsync(CancellationToken ct)
@@ -435,57 +462,87 @@ public sealed class HostAgent
 
     private async Task FrameSendLoopAsync(CancellationToken ct)
     {
-        const int targetFps = 15;
+        const int targetFps = 10;
         var frameInterval = TimeSpan.FromMilliseconds(1000.0 / targetFps);
         var heartbeatInterval = TimeSpan.FromSeconds(5);
         var lastHeartbeat = DateTime.UtcNow;
 
-        // Adaptive quality: start at 60, reduce if frames take too long to send
-        long jpegQuality = 60;
+        // Adaptive quality: start at 55, reduce if frames take too long to send
+        long jpegQuality = 55;
         const long minQuality = 20;
-        const long maxQuality = 80;
-        bool sentFirstFrame = false;
-        using var gdiFallback = new ScreenCapture();
+        const long maxQuality = 75;
+        int emptyFrameStreak = 0;
 
         while (!ct.IsCancellationRequested && _stream is not null)
         {
             var sendStart = DateTime.UtcNow;
 
-            var frameBytes = _capture.CaptureFrameAsJpeg(quality: jpegQuality);
-
-            // Guarantee an immediate initial frame when a session starts even if the desktop is stationary
-            if (!sentFirstFrame && frameBytes.Length == 0)
+            try
             {
-                try { frameBytes = gdiFallback.CaptureFrameAsJpeg(quality: jpegQuality); }
-                catch { }
+                if (_streamScreenFrames)
+                {
+                    byte[] frameBytes = Array.Empty<byte>();
+                    try
+                    {
+                        frameBytes = _capture.CaptureFrameAsJpeg(quality: jpegQuality);
+                    }
+                    catch
+                    {
+                        frameBytes = Array.Empty<byte>();
+                    }
+
+                    // If DXGI returned empty (either stationary screen on initial connect or DXGI unavailable),
+                    // use GDI fallback on frame 1 or periodically every ~1s so the Viewer screen is always live!
+                    if (frameBytes.Length == 0)
+                    {
+                        emptyFrameStreak++;
+                        if (emptyFrameStreak == 1 || emptyFrameStreak >= targetFps)
+                        {
+                            emptyFrameStreak = 1;
+                            try { frameBytes = _gdiFallback.CaptureFrameAsJpeg(quality: jpegQuality); }
+                            catch { }
+                        }
+                    }
+                    else
+                    {
+                        emptyFrameStreak = 0;
+                    }
+
+                    if (frameBytes.Length > 0)
+                    {
+                        await MessageFraming.WriteFrameAsync(_stream, MessageType.FrameData, frameBytes, ct);
+                    }
+
+                    var sendTime = DateTime.UtcNow - sendStart;
+
+                    // Adaptive quality: if sending takes more than half the frame interval,
+                    // reduce quality to save bandwidth. If fast, increase quality.
+                    if (sendTime > frameInterval * 0.5 && jpegQuality > minQuality)
+                    {
+                        jpegQuality = Math.Max(minQuality, jpegQuality - 5);
+                    }
+                    else if (sendTime < frameInterval * 0.2 && jpegQuality < maxQuality)
+                    {
+                        jpegQuality = Math.Min(maxQuality, jpegQuality + 2);
+                    }
+                }
+
+                // Send heartbeat every 5 seconds
+                if (DateTime.UtcNow - lastHeartbeat > heartbeatInterval)
+                {
+                    await MessageFraming.WriteFrameAsync(_stream, MessageType.Heartbeat,
+                        Array.Empty<byte>(), ct);
+                    lastHeartbeat = DateTime.UtcNow;
+                }
             }
-
-            // DXGI returns empty when screen hasn't changed - skip sending
-            if (frameBytes.Length > 0)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                sentFirstFrame = true;
-                await MessageFraming.WriteFrameAsync(_stream, MessageType.FrameData, frameBytes, ct);
+                break;
             }
-
-            var sendTime = DateTime.UtcNow - sendStart;
-
-            // Adaptive quality: if sending takes more than half the frame interval,
-            // reduce quality to save bandwidth. If fast, increase quality.
-            if (sendTime > frameInterval * 0.5 && jpegQuality > minQuality)
+            catch (Exception ex)
             {
-                jpegQuality = Math.Max(minQuality, jpegQuality - 5);
-            }
-            else if (sendTime < frameInterval * 0.2 && jpegQuality < maxQuality)
-            {
-                jpegQuality = Math.Min(maxQuality, jpegQuality + 2);
-            }
-
-            // Send heartbeat every 5 seconds
-            if (DateTime.UtcNow - lastHeartbeat > heartbeatInterval)
-            {
-                await MessageFraming.WriteFrameAsync(_stream, MessageType.Heartbeat,
-                    Array.Empty<byte>(), ct);
-                lastHeartbeat = DateTime.UtcNow;
+                // Never let a transient capture error crash RunSessionAsync!
+                Console.WriteLine($"[FrameSendLoop] Capture warning: {ex.Message}");
             }
 
             // Sleep for the remaining frame time
@@ -528,8 +585,16 @@ public sealed class HostAgent
 
                 case MessageType.MonitorSelect:
                     var monSelect = JsonSerializer.Deserialize<MonitorSelectMessage>(payload);
-                    _capture.SelectMonitor(monSelect.MonitorIndex);
-                    Console.WriteLine($"[HostAgent] Monitor switched to index {monSelect.MonitorIndex}");
+                    if (monSelect.MonitorIndex == -99)
+                    {
+                        _streamScreenFrames = false;
+                    }
+                    else
+                    {
+                        _streamScreenFrames = true;
+                        _capture.SelectMonitor(monSelect.MonitorIndex);
+                        _gdiFallback.SelectMonitor(monSelect.MonitorIndex);
+                    }
                     break;
 
                 case MessageType.ShellInput:

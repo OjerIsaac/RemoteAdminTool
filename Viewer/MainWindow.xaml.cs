@@ -378,6 +378,9 @@ public partial class MainWindow : Window
 
     // ---- Session events ----
 
+    private bool _suppressMonitorSelectionChanged;
+    private DateTime _lastMouseMoveSentUtc = DateTime.MinValue;
+
     private void OnSessionStarted(object? sender, SessionStartedMessage msg)
     {
         Dispatcher.Invoke(() =>
@@ -390,8 +393,10 @@ public partial class MainWindow : Window
             SessionToolbar.Visibility         = Visibility.Visible;
             NoSessionPlaceholder.Visibility   = Visibility.Collapsed;
             _currentRemotePath = "\\";
-            RemoteScreenImage.Focus();
             SetSessionTab(0);
+            // Pre-initialize interactive PowerShell session so Terminal tab is ready immediately
+            var shellType = ShellTypeCombo.SelectedIndex == 1 ? "cmd" : "powershell";
+            _ = _client?.SendShellInputAsync($"##SHELL_TYPE:{shellType}");
             // Mark the active node as connected
             foreach (var n in Nodes)
             {
@@ -451,18 +456,31 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            MonitorSelector.Items.Clear();
-            foreach (var mon in monitors)
+            _suppressMonitorSelectionChanged = true;
+            try
             {
-                var label = $"{mon.Name} ({mon.Width}x{mon.Height}){(mon.IsPrimary ? " *" : "")}";
-                MonitorSelector.Items.Add(new MonitorComboItem(mon.Index, label));
+                MonitorSelector.Items.Clear();
+                foreach (var mon in monitors)
+                {
+                    var label = $"{mon.Name} ({mon.Width}x{mon.Height}){(mon.IsPrimary ? " *" : "")}";
+                    MonitorSelector.Items.Add(new MonitorComboItem(mon.Index, label));
+                }
+                if (MonitorSelector.Items.Count > 0)
+                {
+                    MonitorSelector.SelectedIndex = 0;
+                    MonitorSelector.Visibility = Visibility.Visible;
+                }
             }
-            if (MonitorSelector.Items.Count > 0) { MonitorSelector.SelectedIndex = 0; MonitorSelector.Visibility = Visibility.Visible; }
+            finally
+            {
+                _suppressMonitorSelectionChanged = false;
+            }
         });
     }
 
     private async void MonitorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_suppressMonitorSelectionChanged) return;
         if (_client is null || MonitorSelector.SelectedItem is not MonitorComboItem item) return;
         await _client.SelectMonitorAsync(item.Index);
     }
@@ -549,6 +567,7 @@ public partial class MainWindow : Window
         _monitorViewModel = new MonitorViewModel();
         MonitorPanel.DataContext = _monitorViewModel;
         SilentModeCheckBox.IsChecked = false;
+        if (ControlInputCheckBox is not null) ControlInputCheckBox.IsChecked = false;
 
         // Reset tab highlights to Screen as default
         var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
@@ -609,6 +628,17 @@ public partial class MainWindow : Window
 
         // Stop stats when leaving monitor tab
         if (tab != 4) _ = _client?.SendStatsRequestAsync(false);
+
+        // Stream screen frames only when on the Screen tab (tab == 0) so Terminal and Files have 100% dedicated bandwidth
+        if (tab == 0)
+        {
+            var monIdx = MonitorSelector?.SelectedItem is MonitorComboItem item ? item.Index : 0;
+            _ = _client?.SelectMonitorAsync(monIdx);
+        }
+        else
+        {
+            _ = _client?.SelectMonitorAsync(-99);
+        }
 
         // Update tab button highlight
         var buttons = new[] { TabScreenBtn, TabConsoleBtn, TabFilesBtn, TabDeviceBtn, TabMonitorBtn };
@@ -1058,6 +1088,7 @@ public partial class MainWindow : Window
     // ---- Cursor hiding & Input forwarding on remote screen ----
     private void RemoteScreenImage_MouseEnter(object sender, MouseEventArgs e)
     {
+        if (ControlInputCheckBox?.IsChecked != true) return;
         RemoteScreenImage.Cursor = Cursors.None;
         CursorDot.Visibility = Visibility.Visible;
     }
@@ -1079,19 +1110,26 @@ public partial class MainWindow : Window
 
     private async void RemoteScreenImage_MouseMove(object sender, MouseEventArgs e)
     {
-        if (_client is null || _activeSessionMachineId is null) return;
-        var (x, y) = ToRemoteCoords(e);
-        await _client.SendMouseMoveAsync(x, y);
+        if (_client is null || _activeSessionMachineId is null || ControlInputCheckBox?.IsChecked != true) return;
 
         // Move crosshair dot
         var pos = e.GetPosition(CursorOverlay);
         Canvas.SetLeft(CursorDot, pos.X - 5);
         Canvas.SetTop(CursorDot,  pos.Y - 5);
+
+        // Throttle MouseMove to 20 updates/sec so it never floods the WebSocket
+        var now = DateTime.UtcNow;
+        if ((now - _lastMouseMoveSentUtc).TotalMilliseconds < 50) return;
+        _lastMouseMoveSentUtc = now;
+
+        var (x, y) = ToRemoteCoords(e);
+        await _client.SendMouseMoveAsync(x, y);
     }
 
     private async void RemoteScreenImage_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (_client is null || _activeSessionMachineId is null) return;
+        if (_client is null || _activeSessionMachineId is null || ControlInputCheckBox?.IsChecked != true) return;
+        RemoteScreenImage.Focus();
         var (x, y) = ToRemoteCoords(e);
         var button = e.ChangedButton switch { MouseButton.Right => MouseButtonKind.Right, MouseButton.Middle => MouseButtonKind.Middle, _ => MouseButtonKind.Left };
         await _client.SendMouseButtonAsync(button, MouseButtonAction.Down, x, y);
@@ -1099,7 +1137,7 @@ public partial class MainWindow : Window
 
     private async void RemoteScreenImage_MouseUp(object sender, MouseButtonEventArgs e)
     {
-        if (_client is null || _activeSessionMachineId is null) return;
+        if (_client is null || _activeSessionMachineId is null || ControlInputCheckBox?.IsChecked != true) return;
         var (x, y) = ToRemoteCoords(e);
         var button = e.ChangedButton switch { MouseButton.Right => MouseButtonKind.Right, MouseButton.Middle => MouseButtonKind.Middle, _ => MouseButtonKind.Left };
         await _client.SendMouseButtonAsync(button, MouseButtonAction.Up, x, y);
@@ -1107,20 +1145,20 @@ public partial class MainWindow : Window
 
     private async void RemoteScreenImage_MouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_client is null || _activeSessionMachineId is null) return;
+        if (_client is null || _activeSessionMachineId is null || ControlInputCheckBox?.IsChecked != true) return;
         var (x, y) = ToRemoteCoords(e);
         await _client.SendMouseWheelAsync(e.Delta, x, y);
     }
 
     private async void RemoteScreenImage_KeyDown(object sender, KeyEventArgs e)
     {
-        if (_client is null || _activeSessionMachineId is null) return;
+        if (_client is null || _activeSessionMachineId is null || ControlInputCheckBox?.IsChecked != true) return;
         await _client.SendKeyAsync(KeyInterop.VirtualKeyFromKey(e.Key), KeyAction.Down);
     }
 
     private async void RemoteScreenImage_KeyUp(object sender, KeyEventArgs e)
     {
-        if (_client is null || _activeSessionMachineId is null) return;
+        if (_client is null || _activeSessionMachineId is null || ControlInputCheckBox?.IsChecked != true) return;
         await _client.SendKeyAsync(KeyInterop.VirtualKeyFromKey(e.Key), KeyAction.Up);
     }
 
