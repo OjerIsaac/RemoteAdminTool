@@ -125,7 +125,7 @@ public static class AutoUpdater
         HostCredentials.MarkPreserveOnUpdate();
 
         // Hidden PowerShell process retries replacing the EXE until file lock is released, then relaunches
-        var script = $"for ($i = 0; $i -lt 15; $i++) {{ Start-Sleep -Seconds 1; try {{ Move-Item -Force -LiteralPath '{newPath}' -Destination '{exePath}' -ErrorAction Stop; break }} catch {{ }} }}; Start-Process -FilePath '{exePath}'";
+        var script = $"for ($i = 0; $i -lt 15; $i++) {{ Start-Sleep -Seconds 1; try {{ Move-Item -Force -LiteralPath '{newPath}' -Destination '{exePath}' -ErrorAction Stop; break }} catch {{ }} }}; try {{ Start-Process -FilePath '{exePath}' -ErrorAction Stop }} catch {{ Start-Process -FilePath '{exePath}' -Verb RunAs }}";
         var psi = new ProcessStartInfo
         {
             FileName        = "powershell.exe",

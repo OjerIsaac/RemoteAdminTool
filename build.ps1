@@ -28,8 +28,7 @@ param(
     [string]$AdminToken           = "",   # Sub-admin's AdminToken (for their Viewer login in README_FOR_SUBADMIN.txt)
     [string]$TenantName           = "",   # Optional display name (e.g. AcmeCorp) for folder naming
     [switch]$PublishViewer,
-    [switch]$PublishHostDev,              # Rebuild Host.exe only - keeps existing host.key/host.token
-    [switch]$PublishAll
+    [switch]$PublishHostDev               # Rebuild standalone dev Host.exe using DEV_LICENSE_KEY_HASH / DEV_HOST_TOKEN
 )
 
 $root    = $PSScriptRoot
@@ -212,7 +211,7 @@ function Get-FileSha256([string]$path) {
 }
 
 # ---- Publish Viewer (Super Admin app) ----
-if ($PublishViewer -or $PublishAll) {
+if ($PublishViewer) {
     Write-Host ""
     Write-Host "Publishing Viewer (Super Admin EXE)..." -ForegroundColor Yellow
     $dateStr    = (Get-Date).ToString("yyyy-MM-dd")
@@ -405,12 +404,6 @@ if ($PublishHostDev) {
             Write-Host "  $devHostHash" -ForegroundColor Cyan
         }
     }
-}
-
-if ($PublishAll) {
-    Write-Host ""
-    Write-Host "Note: -PublishAll published the Viewer only." -ForegroundColor Yellow
-    Write-Host "To publish a Host EXE for a sub-admin, run BuildHostForSubAdmin.bat" -ForegroundColor Yellow
 }
 
 Write-Host ""

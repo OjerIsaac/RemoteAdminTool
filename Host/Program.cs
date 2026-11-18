@@ -391,44 +391,31 @@ try {
     {
         private const string RegistrySubKey = @"Software\RemoteAdminTool\Host";
 
-        public static async Task<(string LicenseKeyHash, string HostToken)> ResolveAsync()
+        public static Task<(string LicenseKeyHash, string HostToken)> ResolveAsync()
         {
-            // 1. Optional sidecar files (for Visual Studio F5 debugging or manual override)
-            var keyFile   = Path.Combine(AppContext.BaseDirectory, "host.key");
-            var tokenFile = Path.Combine(AppContext.BaseDirectory, "host.token");
-
-            var fileKey   = File.Exists(keyFile)   ? (await File.ReadAllTextAsync(keyFile)).Trim()   : string.Empty;
-            var fileToken = File.Exists(tokenFile) ? (await File.ReadAllTextAsync(tokenFile)).Trim() : string.Empty;
-
-            if (!string.IsNullOrEmpty(fileKey) && !string.IsNullOrEmpty(fileToken))
-            {
-                SaveToRegistry(fileKey, fileToken);
-                return (fileKey, fileToken);
-            }
-
-            // 2. Check Registry if this EXE was just replaced by AutoUpdater (so it keeps its original Sub-Admin tenant)
+            // 1. Check Registry if this EXE was just replaced by AutoUpdater (so it keeps its original Sub-Admin tenant)
             var (regKey, regToken, preserveOnUpdate) = ReadFromRegistry();
             if (preserveOnUpdate && !string.IsNullOrEmpty(regKey) && !string.IsNullOrEmpty(regToken))
             {
                 SaveToRegistry(regKey, regToken, preserveOnUpdate: false);
-                return (regKey, regToken);
+                return Task.FromResult((regKey, regToken));
             }
 
-            // 3. Compiled-in constants inside standalone Host.exe (built by BuildHostForSubAdmin.bat or DevBuildHost.bat)
+            // 2. Compiled-in constants inside standalone Host.exe (built by BuildHostForSubAdmin.bat or DevBuildHost.bat)
             if (!string.IsNullOrEmpty(HostConstants.DefaultLicenseKeyHash) &&
                 !string.IsNullOrEmpty(HostConstants.DefaultHostToken))
             {
                 SaveToRegistry(HostConstants.DefaultLicenseKeyHash, HostConstants.DefaultHostToken);
-                return (HostConstants.DefaultLicenseKeyHash, HostConstants.DefaultHostToken);
+                return Task.FromResult((HostConstants.DefaultLicenseKeyHash, HostConstants.DefaultHostToken));
             }
 
-            // 4. Fallback to Registry if running a generic build without baked-in constants
+            // 3. Fallback to Registry if running a generic build without baked-in constants
             if (!string.IsNullOrEmpty(regKey) && !string.IsNullOrEmpty(regToken))
             {
-                return (regKey, regToken);
+                return Task.FromResult((regKey, regToken));
             }
 
-            return (string.Empty, string.Empty);
+            return Task.FromResult((string.Empty, string.Empty));
         }
 
         public static void MarkPreserveOnUpdate()

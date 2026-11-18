@@ -7,14 +7,11 @@ namespace RemoteAdminTool.Shared;
 
 public enum MessageType : byte
 {
-    Hello = 1,          // Viewer -> Host: handshake + auth token
-    HelloAck = 2,        // Host -> Viewer: accept/reject
     FrameData = 3,        // Host -> Viewer: a screen frame (compressed image bytes)
     MouseMove = 4,        // Viewer -> Host
     MouseButton = 5,      // Viewer -> Host
     MouseWheel = 6,        // Viewer -> Host
     KeyEvent = 7,          // Viewer -> Host
-    ClipboardSync = 8,      // either direction
     Disconnect = 9,        // either direction
     Heartbeat = 10,         // either direction, keep-alive
 
@@ -37,7 +34,6 @@ public enum MessageType : byte
     FileTransferData = 42,      // either direction: chunk of file data
     FileTransferComplete = 43,  // either direction: file transfer done
     FileTransferCancel = 44,    // either direction: cancel transfer
-    ChatMessage = 50,           // either direction: text chat
     MonitorList = 60,           // Host -> Admin: list of available monitors
     MonitorSelect = 61,         // Admin -> Host: select which monitor to capture
 
@@ -78,13 +74,6 @@ public enum MessageType : byte
     FileDelete            = 102, // Viewer -> Host: delete a remote file or folder
 }
 
-public readonly record struct FrameHeader(
-    int Width,
-    int Height,
-    long TimestampTicks,
-    int PayloadLength
-);
-
 public readonly record struct MouseMoveMessage(int X, int Y);
 
 public enum MouseButtonAction : byte { Down = 0, Up = 1 }
@@ -104,18 +93,6 @@ public enum KeyAction : byte { Down = 0, Up = 1 }
 public readonly record struct KeyEventMessage(
     int VirtualKeyCode,
     KeyAction Action
-);
-
-public readonly record struct HelloMessage(
-    string ClientVersion,
-    string AuthToken
-);
-
-public readonly record struct HelloAckMessage(
-    bool Accepted,
-    string? RejectReason,
-    int ScreenWidth,
-    int ScreenHeight
 );
 
 // ---- Relay model messages ----
@@ -216,14 +193,6 @@ public readonly record struct FileTransferCompleteMessage(
 public readonly record struct FileTransferCancelMessage(
     string TransferId,
     string? Reason
-);
-
-// ---- Chat ----
-
-public readonly record struct ChatMessageData(
-    string SenderName,
-    string Text,
-    DateTime TimestampUtc
 );
 
 // ---- Monitor selection ----

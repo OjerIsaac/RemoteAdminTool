@@ -1,31 +1,18 @@
 using DotNetEnv;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using RemoteAdminTool.RelayServer;
 
 // ---- Load .env file for local development ----
 // On Render, env vars are set in the dashboard and take priority.
-// Env.TraversePath() walks up from the binary to find .env at solution root.
 Env.TraversePath().Load();
 
-// ---- Serilog structured logging ----
+// ---- Serilog console logging (no local logs/ folder created) ----
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .WriteTo.File(
-        Path.Combine(AppContext.BaseDirectory, "logs", "relay-.log"),
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 14)
     .CreateLogger();
-
-// ---- Configuration ----
-// ASP.NET Core merges (in priority order):
-//   1. Environment variables (Render dashboard / .env loaded above)
-//   2. appsettings.json (placeholder values only - safe to commit)
-// Env var naming: double-underscore maps to nested JSON keys
-//   e.g. Auth__SuperAdminToken  →  config["Auth:SuperAdminToken"]
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
@@ -43,21 +30,14 @@ Environment.SetEnvironmentVariable("Auth__HostToken", hostToken);
 
 var listenPort = int.TryParse(
     config["RelayServer:Port"]
-    ?? Environment.GetEnvironmentVariable("PORT"),  // Render injects PORT automatically
+    ?? Environment.GetEnvironmentVariable("PORT"), // Render injects PORT automatically
     out var p) ? p : 5050;
 
-var useTls = config["RelayServer:TLS"] is not ("false" or "False");
-var pfxPath = config["RelayServer:CertPath"] ?? "";
-var pfxPassword = config["RelayServer:CertPassword"] ?? "dev-password";
-
 // ---- PostgreSQL / EF Core ----
-// Render injects DATABASE_URL as a URI: postgres://user:pass@host:port/db
-// Our .env uses ConnectionStrings__Postgres (same URI format via the key above)
-// The helper converts either format to Npgsql key-value format.
 static string BuildNpgsqlConnectionString(string raw)
 {
     if (!raw.StartsWith("postgres://") && !raw.StartsWith("postgresql://"))
-        return raw; // already key-value format
+        return raw;
 
     var uri = new Uri(raw.Replace("postgres://", "postgresql://"));
     var userInfo = uri.UserInfo.Split(':', 2);
@@ -68,7 +48,6 @@ static string BuildNpgsqlConnectionString(string raw)
     return $"Host={uri.Host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Prefer;Trust Server Certificate=true;";
 }
 
-// DATABASE_URL (Render) takes priority over ConnectionStrings:Postgres (.env / appsettings)
 var rawDbUrl = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? config.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("No database connection string found. Set ConnectionStrings__Postgres in .env or DATABASE_URL on Render.");
@@ -79,11 +58,10 @@ builder.Services.AddDbContextFactory<RelayDbContext>(options =>
     options.UseNpgsql(connectionString,
         npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(5)));
 
-// ---- Forwarded Headers (required on Render - TLS is terminated at their edge) ----
+// ---- Forwarded Headers (TLS is terminated at Render's edge) ----
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Trust all proxies (Render's infra) - restrict to specific IPs in high-security setups
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
@@ -98,45 +76,23 @@ builder.Services.AddHttpClient("keepalive", client =>
 });
 builder.Services.AddHostedService<KeepAliveService>();
 
-// Configure Kestrel with TLS
 builder.WebHost.ConfigureKestrel(options =>
 {
-    if (useTls)
-    {
-        var cert = CertificateHelper.GetOrCreateCertificate(pfxPath, pfxPassword);
-
-        var devCertPath = Path.Combine(AppContext.BaseDirectory, "dev-cert.pfx");
-        if (string.IsNullOrEmpty(pfxPath) && !File.Exists(devCertPath))
-        {
-            CertificateHelper.SaveCertificate(cert, devCertPath, pfxPassword);
-        }
-
-        options.ListenAnyIP(listenPort, listenOptions =>
-        {
-            listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-            listenOptions.UseHttps(cert);
-        });
-    }
-    else
-    {
-        options.ListenAnyIP(listenPort);
-    }
+    options.ListenAnyIP(listenPort);
 });
 
 var app = builder.Build();
 
-// Must be first middleware - lets Kestrel know the original scheme was WSS/HTTPS
 app.UseForwardedHeaders();
 
 // ---- Initialize database + tenant store ----
 var tenantStore = app.Services.GetRequiredService<TenantStore>();
 await tenantStore.InitializeAsync();
 
-var hub         = new ConnectionHub(superAdminToken, tenantStore,
+var hub = new ConnectionHub(superAdminToken, tenantStore,
     app.Services.GetRequiredService<IDbContextFactory<RelayDbContext>>());
 var rateLimiter = app.Services.GetRequiredService<ConnectionRateLimiter>();
 
-// Enable WebSocket support
 app.UseWebSockets(new WebSocketOptions
 {
     KeepAliveInterval = TimeSpan.FromSeconds(30)
@@ -147,12 +103,10 @@ app.MapGet("/", () => Results.Ok(new
 {
     status = "running",
     service = "RemoteAdminTool RelayServer",
-    tls = useTls,
     timestamp = DateTime.UtcNow
 }));
 
 // Auto-update version manifest
-// Accepts the global host token (Viewer.exe), super admin token, or any valid per-tenant HostToken/AdminToken (Host.exe).
 app.MapGet("/api/version", async (HttpContext context) =>
 {
     var providedToken = context.Request.Headers["X-Host-Token"].FirstOrDefault()?.Trim() ?? "";
@@ -184,12 +138,12 @@ app.MapGet("/api/version", async (HttpContext context) =>
 
     return Results.Ok(new
     {
-        host        = hostVersion,
-        viewer      = viewerVersion,
-        hostUrl     = hostUrl,
-        viewerUrl   = viewerUrl,
-        hostSha256  = hostSha256,
-        viewerSha256= viewerSha256
+        host         = hostVersion,
+        viewer       = viewerVersion,
+        hostUrl      = hostUrl,
+        viewerUrl    = viewerUrl,
+        hostSha256   = hostSha256,
+        viewerSha256 = viewerSha256
     });
 });
 
@@ -224,23 +178,8 @@ app.Map("/relay", async (HttpContext context) =>
     }
 });
 
-var scheme = useTls ? "wss" : "ws";
-var httpScheme = useTls ? "https" : "http";
-
 Console.WriteLine("=== RemoteAdminTool Relay Server (Multi-Tenant) ===");
-Console.WriteLine($"TLS: {(useTls ? "ENABLED" : "DISABLED")}");
-Console.WriteLine($"Listening on {httpScheme}://0.0.0.0:{listenPort}");
-Console.WriteLine($"WebSocket endpoint: {scheme}://localhost:{listenPort}/relay");
-Console.WriteLine($"Health check: {httpScheme}://localhost:{listenPort}/");
-Console.WriteLine();
-Console.WriteLine("Environment variables:");
-Console.WriteLine("  RAT_SUPER_ADMIN_TOKEN   - Super admin token (platform owner)");
-Console.WriteLine("  RAT_HOST_TOKEN          - Host registration token");
-Console.WriteLine("  RAT_PORT                - Listen port (default: 5050)");
-Console.WriteLine("  RAT_TLS                 - Set to 'false' to disable TLS (always false on Render)");
-Console.WriteLine("  RAT_CERT_PATH           - Path to .pfx certificate file");
-Console.WriteLine("  RAT_CERT_PASSWORD       - Certificate password");
-Console.WriteLine("  DATABASE_URL            - PostgreSQL connection string (set automatically by Render Postgres)");
-Console.WriteLine();
+Console.WriteLine($"Listening on http://0.0.0.0:{listenPort}");
+Console.WriteLine($"WebSocket endpoint: ws://localhost:{listenPort}/relay");
 
 app.Run();
