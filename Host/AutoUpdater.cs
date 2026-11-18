@@ -81,13 +81,35 @@ public static class AutoUpdater
         var exeDir  = Path.GetDirectoryName(exePath)!;
         var newPath = Path.Combine(exeDir, "Host.exe.new");
 
+        // Compute SHA-256 of currently running Host.exe to prevent infinite restart loops
+        // if the server's target binary is already identical to what we are running.
+        var selfHash = string.Empty;
+        if (File.Exists(exePath))
+        {
+            await using var selfStream = new FileStream(exePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            selfHash = Convert.ToHexString(await SHA256.HashDataAsync(selfStream)).ToLowerInvariant();
+        }
+
+        if (!string.IsNullOrWhiteSpace(expectedSha256) &&
+            string.Equals(selfHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.Ordinal))
+        {
+            return false; // Already running the exact target binary!
+        }
+
         var bytes = await _http.GetByteArrayAsync(downloadUrl);
         Log.Information("[Updater] Downloaded {SizeKb:N0} KB.", bytes.Length / 1024);
+
+        var actualHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+        // Never overwrite and restart if downloaded binary is identical to currently running EXE
+        if (!string.IsNullOrEmpty(selfHash) && string.Equals(actualHash, selfHash, StringComparison.Ordinal))
+        {
+            return false;
+        }
 
         // Verify SHA-256 hash before applying (prevents MITM injection)
         if (!string.IsNullOrWhiteSpace(expectedSha256))
         {
-            var actualHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
             if (!string.Equals(actualHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.Ordinal))
             {
                 Log.Warning("[Updater] Hash mismatch! Expected {Expected}, got {Actual}. Aborting update.", expectedSha256, actualHash);

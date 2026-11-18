@@ -395,10 +395,14 @@ if ($PublishHostDev) {
         }
 
         if ($devPubExit -eq 0) {
-            # Keep ONLY Host.exe (and logs folder if present) - zero .key or .token files!
-            Get-ChildItem $distDevHost -Exclude "Host.exe","logs" | Remove-Item -Force -Recurse
+            # Keep ONLY Host.exe - zero .key or .token files!
+            Get-ChildItem $distDevHost -Exclude "Host.exe" | Remove-Item -Force -Recurse
+            $devHostHash = Get-FileSha256 (Join-Path $distDevHost "Host.exe")
 
             Write-Host "  Host.exe rebuilt -> $distDevHost\Host.exe (100% standalone single-file EXE!)" -ForegroundColor Green
+            Write-Host ""
+            Write-Host "  SHA-256 (paste into Render env var HOST_EXE_SHA256):" -ForegroundColor Yellow
+            Write-Host "  $devHostHash" -ForegroundColor Cyan
         }
     }
 }
