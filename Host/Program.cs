@@ -11,6 +11,15 @@ Log.Logger = new LoggerConfiguration().CreateLogger();
 if (args.Contains("--stop") || args.Contains("--uninstall"))
 {
     HostRegistrationHelper.RemoveStartupRegistration();
+    try
+    {
+        using var stopEvent = new EventWaitHandle(false, EventResetMode.ManualReset, @"Global\RemoteAdminTool_Host_StopSignal");
+        stopEvent.Set();
+        Thread.Sleep(1000);
+    }
+    catch
+    {
+    }
     return;
 }
 

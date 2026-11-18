@@ -12,6 +12,9 @@ if %errorLevel% neq 0 (
 echo Removing Watchdog scheduled task (if present)...
 schtasks /Delete /TN "RemoteAdminHost" /F >nul 2>&1
 
+echo Signaling Host to disconnect cleanly from Relay...
+powershell -NoProfile -Command "try { $e = [System.Threading.EventWaitHandle]::OpenExisting('Global\RemoteAdminTool_Host_StopSignal'); $e.Set(); Start-Sleep -Seconds 1 } catch {}"
+
 echo Stopping all Host processes (Elevated)...
 taskkill /F /T /IM Host.exe >nul 2>&1
 powershell -NoProfile -Command "Get-Process -Name 'Host' -ErrorAction SilentlyContinue | Stop-Process -Force"

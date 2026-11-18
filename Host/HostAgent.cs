@@ -71,6 +71,7 @@ public sealed class HostAgent
     public async Task RunAsync(CancellationToken ct = default)
     {
         _ = RunPeriodicUpdateCheckAsync(ct);
+        _ = WatchForStopSignalAsync(ct);
 
         while (!ct.IsCancellationRequested)
         {
@@ -186,12 +187,61 @@ public sealed class HostAgent
         await IdleLoopAsync(ct);
     }
 
+    private async Task WatchForStopSignalAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var stopEvent = new EventWaitHandle(false, EventResetMode.ManualReset, @"Global\RemoteAdminTool_Host_StopSignal");
+            await Task.Run(() => stopEvent.WaitOne(), ct);
+            await SendDisconnectAndCloseAsync();
+            Environment.Exit(0);
+        }
+        catch
+        {
+        }
+    }
+
+    public async Task SendDisconnectAndCloseAsync()
+    {
+        try
+        {
+            if (_stream is not null && _ws?.State == WebSocketState.Open)
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await MessageFraming.WriteFrameAsync(_stream, MessageType.Disconnect, Array.Empty<byte>(), cts.Token);
+                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Host stopping", cts.Token);
+            }
+        }
+        catch
+        {
+        }
+    }
+
     /// <summary>
     /// Waits for the relay to signal a session (admin wants to connect).
     /// When SessionStarted arrives, runs the frame-send + input-receive loops.
     /// </summary>
     private async Task IdleLoopAsync(CancellationToken ct)
     {
+        using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(idleCts.Token))
+                {
+                    if (!_inActiveSession && _stream is not null && _ws?.State == WebSocketState.Open)
+                    {
+                        await MessageFraming.WriteFrameAsync(_stream, MessageType.Heartbeat, Array.Empty<byte>(), idleCts.Token);
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }, idleCts.Token);
+
         while (!ct.IsCancellationRequested && _ws!.State == WebSocketState.Open)
         {
             var (type, payload) = await MessageFraming.ReadFrameAsync(_stream!, ct);
@@ -747,7 +797,7 @@ public sealed class HostAgent
             await SendShellOutputAsync("[RemoteAdmin] Disabling watchdog auto-restart and stopping Host...\n", isError: false, ct);
             HostRegistrationHelper.RemoveStartupRegistration();
             await SendShellOutputAsync("[RemoteAdmin] Watchdog scheduled task and auto-start removed. Host terminated permanently.\n", isError: false, ct);
-            await Task.Delay(500, ct);
+            await SendDisconnectAndCloseAsync();
             Environment.Exit(0);
             return;
         }

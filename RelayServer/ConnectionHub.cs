@@ -233,11 +233,26 @@ public sealed class ConnectionHub
     {
         while (!ct.IsCancellationRequested && host.WebSocket.State == WebSocketState.Open)
         {
-            var (type, payload) = await MessageFraming.ReadFrameAsync(host.Stream, ct);
+            using var readTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            readTimeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+            MessageType type;
+            byte[] payload;
+            try
+            {
+                (type, payload) = await MessageFraming.ReadFrameAsync(host.Stream, readTimeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                Console.WriteLine($"[Hub] Host heartbeat timeout (30s): {host.MachineName} ({host.MachineId})");
+                return;
+            }
+
+            host.LastHeartbeat = DateTime.UtcNow;
+
             switch (type)
             {
                 case MessageType.Heartbeat:
-                    host.LastHeartbeat = DateTime.UtcNow;
                     break;
 
                 case MessageType.Disconnect:
